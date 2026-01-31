@@ -88,6 +88,42 @@ class FilesystemResponse(BaseModel):
     filesystem: Dict[str, str]
 
 
+class BulkCrawlRequest(BaseModel):
+    """Request to trigger a bulk crawl job for all patient conditions."""
+    conditions: Optional[List[str]] = Field(
+        default=None, 
+        description="Specific conditions to crawl. If not provided, auto-detects from patients."
+    )
+    max_trials_per_condition: int = Field(
+        default=50, 
+        ge=1, 
+        le=500, 
+        description="Maximum trials to fetch per condition"
+    )
+    enrich_with_firecrawl: bool = Field(
+        default=False, 
+        description="Enrich with Firecrawl scraping"
+    )
+
+
+class BulkCrawlConditionResult(BaseModel):
+    """Result for a single condition crawl."""
+    condition: str
+    fetched: int
+    new: int
+    updated: int
+    skipped: int
+    error: Optional[str] = None
+
+
+class BulkCrawlResponse(BaseModel):
+    """Response from bulk crawl job."""
+    success: bool = True
+    conditions_crawled: List[str]
+    summary: Dict[str, int]
+    details: List[BulkCrawlConditionResult]
+
+
 # ============ Patient Schemas ============
 
 class PatientCreate(BaseModel):

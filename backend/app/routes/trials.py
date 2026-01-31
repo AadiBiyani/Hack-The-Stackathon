@@ -4,13 +4,15 @@ Trials API Routes
 REST endpoints for trial data and crawl operations.
 """
 
+import asyncio
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 
 from ..services.mongodb import (
     get_all_trials,
     get_trial_by_nct_id,
-    get_trials_by_condition
+    get_trials_by_condition,
+    get_unique_patient_conditions
 )
 from ..services.crawler import run_crawl
 from ..models.schemas import (
@@ -18,7 +20,10 @@ from ..models.schemas import (
     CrawlRequest,
     CrawlResponse,
     FilesystemResponse,
-    ErrorResponse
+    ErrorResponse,
+    BulkCrawlRequest,
+    BulkCrawlResponse,
+    BulkCrawlConditionResult
 )
 
 router = APIRouter(prefix="/api/trials", tags=["trials"])
@@ -124,6 +129,104 @@ async def trigger_crawl(request: CrawlRequest):
             success=True,
             stats=stats
         )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/crawl/bulk", response_model=BulkCrawlResponse)
+async def trigger_bulk_crawl(request: BulkCrawlRequest):
+    """
+    Trigger a bulk crawl job for multiple conditions.
+    
+    If no conditions are provided, automatically detects unique conditions
+    from all patients in the database.
+    """
+    try:
+        # Get conditions to crawl
+        if request.conditions and len(request.conditions) > 0:
+            conditions = request.conditions
+        else:
+            # Auto-detect from patients
+            conditions = await get_unique_patient_conditions()
+            
+        if not conditions:
+            return BulkCrawlResponse(
+                success=True,
+                conditions_crawled=[],
+                summary={
+                    "total_fetched": 0,
+                    "new_added": 0,
+                    "updated": 0,
+                    "duplicates_skipped": 0
+                },
+                details=[]
+            )
+        
+        print(f"🕷️  API: Starting bulk crawl for {len(conditions)} conditions: {conditions}")
+        
+        # Crawl each condition (sequentially to avoid rate limiting)
+        details = []
+        total_fetched = 0
+        total_new = 0
+        total_updated = 0
+        total_skipped = 0
+        
+        for condition in conditions:
+            try:
+                print(f"   📥 Crawling: {condition}")
+                
+                stats = await run_crawl(
+                    condition=condition,
+                    max_trials=request.max_trials_per_condition,
+                    enrich_with_firecrawl=request.enrich_with_firecrawl
+                )
+                
+                fetched = stats.get("total_fetched", 0)
+                new = stats.get("new_trials", 0)
+                updated = stats.get("updated_trials", 0)
+                skipped = stats.get("skipped", 0)
+                
+                details.append(BulkCrawlConditionResult(
+                    condition=condition,
+                    fetched=fetched,
+                    new=new,
+                    updated=updated,
+                    skipped=skipped
+                ))
+                
+                total_fetched += fetched
+                total_new += new
+                total_updated += updated
+                total_skipped += skipped
+                
+                # Small delay between conditions to be nice to the API
+                await asyncio.sleep(0.5)
+                
+            except Exception as e:
+                print(f"   ❌ Error crawling {condition}: {e}")
+                details.append(BulkCrawlConditionResult(
+                    condition=condition,
+                    fetched=0,
+                    new=0,
+                    updated=0,
+                    skipped=0,
+                    error=str(e)
+                ))
+        
+        print(f"🕷️  API: Bulk crawl complete. {total_new} new trials added.")
+        
+        return BulkCrawlResponse(
+            success=True,
+            conditions_crawled=conditions,
+            summary={
+                "total_fetched": total_fetched,
+                "new_added": total_new,
+                "updated": total_updated,
+                "duplicates_skipped": total_skipped
+            },
+            details=details
+        )
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

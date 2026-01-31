@@ -6,7 +6,7 @@
  */
 
 import { openai } from "@ai-sdk/openai";
-import { ToolLoopAgent, stepCountIs } from "ai";
+import { Output, ToolLoopAgent, stepCountIs } from "ai";
 import { createBashTool } from "bash-tool";
 import { NextResponse } from "next/server";
 import { z } from "zod";

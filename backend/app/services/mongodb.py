@@ -238,6 +238,14 @@ async def get_all_patients() -> List[Dict]:
     return await cursor.to_list(length=1000)
 
 
+async def get_unique_patient_conditions() -> List[str]:
+    """Get unique conditions from all patients."""
+    db = get_db()
+    conditions = await db.patients.distinct("condition")
+    # Filter out None/empty values
+    return [c for c in conditions if c]
+
+
 async def update_patient(patient_id: str, updates: Dict[str, Any]) -> Any:
     """Update a patient."""
     db = get_db()
