@@ -295,7 +295,10 @@ async def save_match(match: Dict[str, Any]) -> Any:
 
 
 async def save_matches(patient_id: str, matches: List[Dict[str, Any]]) -> Any:
-    """Save multiple matches for a patient (from gateway)."""
+    """Save multiple matches for a patient (from gateway).
+    
+    Also caches the top 3 matches on the patient document for quick retrieval.
+    """
     db = get_db()
     pid = ObjectId(patient_id)
     docs = []
@@ -311,8 +314,53 @@ async def save_matches(patient_id: str, matches: List[Dict[str, Any]]) -> Any:
         })
     if not docs:
         return None
+    
+    # Insert into matches collection (history)
     result = await db.matches.insert_many(docs)
+    
+    # Cache top 3 matches on the patient document
+    cached_matches = []
+    for m in matches[:3]:
+        cached_matches.append({
+            "nct_id": m.get("nct_id", ""),
+            "trial_title": m.get("trial_title"),
+            "match_score": int(m.get("match_score", 0)),
+            "reasoning": m.get("reasoning"),
+        })
+    
+    await db.patients.update_one(
+        {"_id": pid},
+        {
+            "$set": {
+                "cached_matches": cached_matches,
+                "matches_updated_at": datetime.utcnow(),
+            }
+        }
+    )
+    
     return result
+
+
+async def get_cached_matches(patient_id: str) -> Optional[Dict]:
+    """Get cached matches for a patient.
+    
+    Returns:
+        Dict with matches array and updated_at timestamp, or None if no cached matches.
+    """
+    db = get_db()
+    
+    patient = await db.patients.find_one(
+        {"_id": ObjectId(patient_id)},
+        {"cached_matches": 1, "matches_updated_at": 1}
+    )
+    
+    if not patient or not patient.get("cached_matches"):
+        return None
+    
+    return {
+        "matches": patient.get("cached_matches", []),
+        "updated_at": patient.get("matches_updated_at"),
+    }
 
 
 async def get_matches_by_patient(patient_id: str) -> List[Dict]:

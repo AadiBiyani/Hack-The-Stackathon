@@ -60,6 +60,8 @@ interface MatchResult {
   patient_id: string;
   matches: Match[];
   email?: EmailResult;
+  cached?: boolean;
+  cached_at?: string;
 }
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
@@ -76,15 +78,35 @@ export default function MatchPage() {
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
-    fetchPatient();
+    fetchPatientAndCachedMatches();
   }, [patientId]);
 
-  const fetchPatient = async () => {
+  const fetchPatientAndCachedMatches = async () => {
+    setLoading(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/api/patients/${patientId}`);
-      if (!res.ok) throw new Error("Patient not found");
-      const data = await res.json();
-      setPatient(data.patient || data);
+      // Fetch patient and cached matches in parallel
+      const [patientRes, cachedRes] = await Promise.all([
+        fetch(`${BACKEND_URL}/api/patients/${patientId}`),
+        fetch(`${BACKEND_URL}/api/patients/${patientId}/cached-matches`),
+      ]);
+
+      if (!patientRes.ok) throw new Error("Patient not found");
+      const patientData = await patientRes.json();
+      setPatient(patientData.patient || patientData);
+
+      // Load cached matches if available
+      if (cachedRes.ok) {
+        const cachedData = await cachedRes.json();
+        if (cachedData.has_cached && cachedData.matches?.length > 0) {
+          setResult({
+            success: true,
+            patient_id: patientId,
+            matches: cachedData.matches,
+            cached: true,
+            cached_at: cachedData.updated_at,
+          });
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load patient");
     } finally {
@@ -136,6 +158,20 @@ export default function MatchPage() {
       .split("_")
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(" ");
+  };
+
+  const formatCachedTime = (isoString: string) => {
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return "just now";
+    if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? "s" : ""} ago`;
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
+    return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
   };
 
   const getScoreColor = (score: number) => {
@@ -333,20 +369,28 @@ export default function MatchPage() {
               )}
 
               {result && result.matches && result.matches.length > 0 && (
-                <div className="flex items-center gap-2 text-green-600">
-                  <CheckCircle2 className="h-5 w-5" />
-                  <span className="font-medium">
-                    Found {result.matches.length} Matching Trial{result.matches.length > 1 ? "s" : ""}
-                  </span>
-                  <Button 
-                    onClick={runMatching} 
-                    variant="ghost" 
-                    size="sm" 
-                    className="ml-auto gap-1"
-                  >
-                    <RefreshCw className="h-3 w-3" />
-                    Re-run
-                  </Button>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-green-600">
+                    <CheckCircle2 className="h-5 w-5" />
+                    <span className="font-medium">
+                      Found {result.matches.length} Matching Trial{result.matches.length > 1 ? "s" : ""}
+                    </span>
+                    <Button 
+                      onClick={runMatching} 
+                      variant="ghost" 
+                      size="sm" 
+                      className="ml-auto gap-1"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      Re-run
+                    </Button>
+                  </div>
+                  {result.cached && result.cached_at && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      Cached results from {formatCachedTime(result.cached_at)}
+                    </p>
+                  )}
                 </div>
               )}
             </CardContent>

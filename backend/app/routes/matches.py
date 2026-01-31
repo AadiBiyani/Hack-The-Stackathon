@@ -7,12 +7,48 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
-from app.services.mongodb import get_db, save_matches, get_patient_by_id, get_all_matches, get_matches_by_patient
+from app.services.mongodb import get_db, save_matches, get_patient_by_id, get_all_matches, get_matches_by_patient, get_cached_matches
 from app.services.email import send_match_notification
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["matches"])
+
+
+@router.get("/patients/{patient_id}/cached-matches")
+async def get_patient_cached_matches(patient_id: str):
+    """
+    Get cached matches for a patient.
+    
+    Returns the most recent match results stored on the patient document.
+    Use this for quick retrieval without re-running the AI agent.
+    """
+    try:
+        db = get_db()
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    
+    cached = await get_cached_matches(patient_id)
+    
+    if not cached:
+        return {
+            "success": True,
+            "has_cached": False,
+            "matches": [],
+            "updated_at": None,
+        }
+    
+    # Convert datetime to ISO string
+    updated_at = cached.get("updated_at")
+    if updated_at:
+        updated_at = updated_at.isoformat()
+    
+    return {
+        "success": True,
+        "has_cached": True,
+        "matches": cached.get("matches", []),
+        "updated_at": updated_at,
+    }
 
 
 class MatchItem(BaseModel):
