@@ -6,14 +6,14 @@
  */
 
 import { openai } from "@ai-sdk/openai";
-import { generateText } from "ai";
+import { ToolLoopAgent, stepCountIs } from "ai";
 import { createBashTool } from "bash-tool";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5-mini";
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o";
 
 const MatchItemSchema = z.object({
   nct_id: z.string(),
@@ -116,7 +116,7 @@ export async function POST(request: Request) {
   // 3. Build bash-tool with in-memory filesystem
   const { tools } = await createBashTool({ files: filesystem });
 
-  // 4. OpenAI model (AI SDK 4 – no v2 requirement; works with gpt-5-mini)
+  // 4. OpenAI model with AI SDK v6 ToolLoopAgent
   const model = openai(OPENAI_MODEL);
 
   const systemPrompt = `You are a clinical trial matching agent. You have access to a read-only filesystem containing markdown files of clinical trials. Each file is at a path like trials/{condition}/{phase}/NCT12345678.md.
@@ -145,15 +145,21 @@ Include exactly 1 to 3 matches, ordered by match_score descending.`;
 
 Find the top 3 matching trials and return the JSON block.`;
 
-  let result: Awaited<ReturnType<typeof generateText>>;
+  let resultText: string;
   try {
-    result = await generateText({
+    // Use ToolLoopAgent from AI SDK v6 as shown in bash-tool docs
+    const agent = new ToolLoopAgent({
       model,
+      tools,
       system: systemPrompt,
-      prompt: userPrompt,
-      tools: { bash: tools.bash },
-      maxSteps: 20,
+      stopWhen: stepCountIs(20),
     });
+
+    const result = await agent.generate({
+      prompt: userPrompt,
+    });
+
+    resultText = result.text || "";
   } catch (e) {
     const err = e instanceof Error ? e.message : String(e);
     return NextResponse.json(
@@ -162,11 +168,10 @@ Find the top 3 matching trials and return the JSON block.`;
     );
   }
 
-  const text = result.text || "";
-  const jsonStr = extractJsonBlock(text);
+  const jsonStr = extractJsonBlock(resultText);
   if (!jsonStr) {
     return NextResponse.json(
-      { error: "Agent did not return valid JSON block", raw: text.slice(0, 500) },
+      { error: "Agent did not return valid JSON block", raw: resultText.slice(0, 500) },
       { status: 500 }
     );
   }
