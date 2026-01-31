@@ -16,9 +16,6 @@ class Settings(BaseSettings):
     # Firecrawl
     firecrawl_api_key: str = ""
     
-    # OpenRouter (for LLM)
-    openrouter_api_key: str = ""
-    
     # Resend (for email)
     resend_api_key: str = ""
     resend_from_email: str = "onboarding@resend.dev"
