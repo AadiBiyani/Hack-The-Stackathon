@@ -1,3 +1,9 @@
+[phases.setup]
+nixPkgs = ["nodejs_18"]
+
+[phases.install]
+cmds = ["npm ci || npm install"]
+
 [phases.build]
 cmds = ["npm run build"]
 
