@@ -214,13 +214,14 @@ async def update_crawl_record(nct_id: str, source_hash: str) -> None:
 # ============ Patient Operations ============
 
 async def save_patient(patient: Dict[str, Any]) -> Any:
-    """Save a new patient."""
+    """Save a new patient. Does not mutate the input dict."""
     db = get_db()
     
-    patient["created_at"] = datetime.utcnow()
-    patient["updated_at"] = datetime.utcnow()
+    data = dict(patient)
+    data["created_at"] = datetime.utcnow()
+    data["updated_at"] = datetime.utcnow()
     
-    result = await db.patients.insert_one(patient)
+    result = await db.patients.insert_one(data)
     return result
 
 
@@ -265,6 +266,27 @@ async def save_match(match: Dict[str, Any]) -> Any:
     match["created_at"] = datetime.utcnow()
     
     result = await db.matches.insert_one(match)
+    return result
+
+
+async def save_matches(patient_id: str, matches: List[Dict[str, Any]]) -> Any:
+    """Save multiple matches for a patient (from gateway)."""
+    db = get_db()
+    pid = ObjectId(patient_id)
+    docs = []
+    for m in matches:
+        docs.append({
+            "patient_id": pid,
+            "nct_id": m.get("nct_id", ""),
+            "trial_title": m.get("trial_title"),
+            "match_score": int(m.get("match_score", 0)),
+            "reasoning": m.get("reasoning"),
+            "status": "pending",
+            "created_at": datetime.utcnow(),
+        })
+    if not docs:
+        return None
+    result = await db.matches.insert_many(docs)
     return result
 
 

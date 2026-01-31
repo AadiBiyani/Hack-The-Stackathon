@@ -88,19 +88,17 @@ async def create_patient(patient: PatientCreate):
     """
     try:
         patient_data = patient.model_dump()
-        
-        # Normalize condition
         patient_data["condition"] = normalize_condition(patient_data["condition"])
         
         result = await save_patient(patient_data)
+        inserted_id = str(result.inserted_id)
         
+        # Build a JSON-serializable response (no ObjectId/datetime from DB)
+        response_patient = {**patient_data, "_id": inserted_id}
         return {
             "success": True,
-            "patient_id": str(result.inserted_id),
-            "patient": {
-                "_id": str(result.inserted_id),
-                **patient_data
-            }
+            "patient_id": inserted_id,
+            "patient": response_patient,
         }
     except Exception as e:
         # Handle duplicate email

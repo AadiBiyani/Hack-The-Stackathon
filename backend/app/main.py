@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import get_settings
 from .services.mongodb import connect_mongodb, close_mongodb
 from .services.firecrawl import init_firecrawl
-from .routes import trials, patients
+from .routes import trials, patients, matches
 
 
 @asynccontextmanager
@@ -72,6 +72,7 @@ app.add_middleware(
 # Include routers
 app.include_router(trials.router)
 app.include_router(patients.router)
+app.include_router(matches.router)
 
 
 @app.get("/")

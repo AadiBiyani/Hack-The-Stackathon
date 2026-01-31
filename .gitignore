@@ -2,7 +2,6 @@ node_modules
 .env
 package-lock.json
 test-output
-.cursor/plans
 
 # Python
 venv/
@@ -10,3 +9,10 @@ __pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
+docs/
+
+frontend/.next/
+frontend/.env.local
+frontend/node_modules
+frontend/package-lock.json
+frontend/package.json

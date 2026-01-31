@@ -1,33 +1,33 @@
 ---
 name: Clinical Trial Matcher MVP
-overview: Build a clinical trial matching system that scrapes trial data using Firecrawl + ClinicalTrials.gov API, stores patient profiles in Supabase, uses GPT-4o via OpenRouter for intelligent matching, and sends notifications via Resend - all deployed on Railway for live demo.
+overview: Build a clinical trial matching system using Vercel AI SDK with bash-tool for filesystem navigation, MongoDB Atlas for trial/patient storage, Firecrawl + ClinicalTrials.gov API for data ingestion, GPT-4o via OpenRouter for matching, and Resend for notifications - deployed on Vercel.
 todos:
   - id: setup-project
-    content: Initialize FastAPI project with folder structure, requirements.txt, and environment configuration
+    content: Initialize Next.js project with Vercel AI SDK, TypeScript, and dependencies (bash-tool, mongodb, resend)
     status: pending
-  - id: supabase-schema
-    content: Create Supabase tables (patients, trials, matches) with proper schema and relationships
+  - id: mongodb-schema
+    content: Set up MongoDB Atlas collections (trials, patients, matches, crawl_index) with proper indexes
     status: pending
-  - id: trial-ingestion
-    content: Build ClinicalTrials.gov API v2 integration to fetch and store recruiting trials
+  - id: crawl-job
+    content: Build API route for crawl job - fetches trials, checks MongoDB for duplicates, stores new trials as documents
     status: pending
-  - id: firecrawl-enrichment
-    content: Add Firecrawl scraping for supplementary trial data (contact info, detailed eligibility)
+  - id: trial-loader
+    content: Build function to load trial documents from MongoDB into in-memory filesystem for bash-tool agent
     status: pending
   - id: patient-form
-    content: Create simple HTML form and FastAPI endpoints for patient profile management
+    content: Create simple React form for patient profile management with MongoDB storage
     status: pending
   - id: matching-agent
-    content: Implement GPT-4o matching logic via OpenRouter with structured prompts and scoring
+    content: Build agent using Vercel AI SDK + bash-tool that navigates trial filesystem and scores matches with GPT-4o
     status: pending
   - id: email-notifications
     content: Integrate Resend to send match notifications to doctors and patients
     status: pending
-  - id: deploy-railway
-    content: Deploy to Railway with environment variables and generate public URL
+  - id: deploy-vercel
+    content: Deploy to Vercel with MongoDB Atlas integration and environment variables
     status: pending
   - id: demo-data
-    content: Populate demo data (20-30 trials, 3-5 patients) and run end-to-end test
+    content: Run initial crawl to populate trials, create sample patients, and run end-to-end matching test
     status: pending
 isProject: false
 ---
@@ -38,40 +38,42 @@ isProject: false
 
 ```mermaid
 flowchart TB
-    subgraph DataIngestion [Data Ingestion Layer]
+    subgraph DataIngestion [Crawl Job - API Route]
         CT[ClinicalTrials.gov API v2]
-        FC[Firecrawl Scraper]
-        RD[Reducto PDF Parser]
+        FC[Firecrawl Enrichment]
+        IDX[MongoDB Dedup Check]
     end
     
-    subgraph Storage [Supabase Database]
-        Trials[trials table]
-        Patients[patients table]
-        Matches[matches table]
+    subgraph MongoDB [MongoDB Atlas]
+        Trials[trials collection]
+        Patients[patients collection]
+        Matches[matches collection]
+        CrawlIdx[crawl_index collection]
     end
     
-    subgraph Agent [Matching Agent]
-        OR[OpenRouter API]
-        GPT[GPT-4o Model]
-        Match[Matching Logic]
+    subgraph AgentRuntime [Vercel AI SDK Agent]
+        Loader[Load trials to memory]
+        MemFS[In-Memory Filesystem]
+        BashTool[bash-tool]
+        GPT[GPT-4o via OpenRouter]
     end
     
     subgraph Notification [Notification Layer]
         RS[Resend Email API]
-        DocEmail[Doctor Email]
-        PatEmail[Patient Email]
     end
     
-    CT --> Trials
-    FC --> Trials
-    RD --> Trials
-    Patients --> Match
-    Trials --> Match
-    Match --> GPT
-    GPT --> Matches
+    CT --> IDX
+    FC --> IDX
+    IDX -->|new trials| Trials
+    IDX -->|track| CrawlIdx
+    
+    Trials -->|load| Loader
+    Loader --> MemFS
+    Patients --> AgentRuntime
+    MemFS --> BashTool
+    BashTool --> GPT
+    GPT -->|top 3| Matches
     Matches --> RS
-    RS --> DocEmail
-    RS --> PatEmail
 ```
 
 
@@ -79,259 +81,779 @@ flowchart TB
 ## Tech Stack Decision
 
 
-| Component            | Choice                             | Rationale                                                  |
-| -------------------- | ---------------------------------- | ---------------------------------------------------------- |
-| **Backend**          | FastAPI (Python)                   | Fast to build, async support, easy deployment              |
-| **Database**         | Supabase (PostgreSQL)              | Sponsor, free tier, built-in auth, vector support          |
-| **LLM**              | GPT-4o via OpenRouter              | 88% criterion-level accuracy, OpenRouter is a sponsor      |
-| **Web Scraping**     | Firecrawl + ClinicalTrials.gov API | Firecrawl for enrichment, official API for structured data |
-| **Document Parsing** | Reducto                            | Sponsor, handles complex medical PDFs                      |
-| **Email**            | Resend                             | Sponsor, reliable transactional emails                     |
-| **Deployment**       | Railway                            | Free tier, easy FastAPI deployment, public URLs            |
+| Component            | Choice                             | Rationale                                                                    |
+| -------------------- | ---------------------------------- | ---------------------------------------------------------------------------- |
+| **Framework**        | Next.js + Vercel AI SDK            | Native bash-tool support, TypeScript, optimized for Vercel                   |
+| **Agent Tools**      | bash-tool                          | Vercel's package for filesystem navigation - exactly what we need            |
+| **Database**         | MongoDB Atlas                      | **Headliner sponsor with prize track**, native Vercel integration, free tier |
+| **LLM**              | GPT-4o via OpenRouter              | 88% criterion-level accuracy, **OpenRouter is sponsor**                      |
+| **Web Scraping**     | Firecrawl + ClinicalTrials.gov API | **Firecrawl is host**, official API for structured data                      |
+| **Document Parsing** | Reducto                            | **Reducto is host**, handles complex medical PDFs (stretch goal)             |
+| **Email**            | Resend                             | **Resend is host**, reliable transactional emails                            |
+| **Deployment**       | Vercel                             | Native MongoDB integration, AI SDK optimized, free tier                      |
 
 
-## Database Schema (Supabase)
+## How bash-tool Works with MongoDB
 
-**patients table:**
+The key insight: **Vercel's bash-tool creates an in-memory filesystem** that the agent navigates using bash commands. We store trials in MongoDB, then load them into this virtual filesystem when the agent runs.
 
-- `id` (uuid, primary key)
-- `name` (text)
-- `email` (text)
-- `age` (integer)
-- `condition` (text) - e.g., "RRMS", "breast cancer"
-- `prior_treatments` (text[])
-- `comorbidities` (text[])
-- `location` (text) - city/state for geographic matching
-- `budget_constraints` (text) - e.g., "insured", "limited", "flexible"
-- `time_commitment` (text) - e.g., "weekly visits ok", "monthly only"
-- `doctor_email` (text)
-- `created_at` (timestamp)
+```typescript
+// Load trials from MongoDB into in-memory filesystem
+const trials = await db.collection('trials').find({ condition: 'multiple_sclerosis' }).toArray();
 
-**trials table:**
+const files: Record<string, string> = {};
+for (const trial of trials) {
+  const path = `trials/${trial.condition}/${trial.phase}/${trial.nctId}.md`;
+  files[path] = trial.markdownContent;
+}
 
-- `id` (uuid, primary key)
-- `nct_id` (text, unique) - ClinicalTrials.gov identifier
-- `title` (text)
-- `condition` (text)
-- `phase` (text)
-- `status` (text) - "Recruiting", "Active", etc.
-- `intervention` (text)
-- `eligibility_criteria` (text) - full inclusion/exclusion text
-- `locations` (text[])
-- `start_date` (date)
-- `completion_date` (date)
-- `contact_info` (jsonb)
-- `source_url` (text)
-- `last_updated` (timestamp)
+// Create bash-tool with loaded files
+const { tools } = await createBashTool({ files });
 
-**matches table:**
+// Agent can now run: ls trials/, grep, cat, etc.
+```
 
-- `id` (uuid, primary key)
-- `patient_id` (uuid, foreign key)
-- `trial_id` (uuid, foreign key)
-- `match_score` (integer) - 0-100
-- `reasoning` (text) - LLM explanation
-- `status` (text) - "pending", "notified", "enrolled"
-- `created_at` (timestamp)
+**Virtual Filesystem Structure (in-memory):**
+
+```
+trials/
+├── multiple_sclerosis/
+│   ├── phase1/
+│   │   └── NCT12345678.md
+│   ├── phase2/
+│   │   ├── NCT23456789.md
+│   │   └── NCT34567890.md
+│   └── phase3/
+│       └── NCT45678901.md
+└── breast_cancer/
+    ├── phase1/
+    ├── phase2/
+    └── phase3/
+```
+
+**Trial Markdown Template (stored in MongoDB `markdownContent` field):**
+
+```markdown
+# Trial: NCT12345678
+
+## Basic Info
+- **Title:** A Phase 2 Study of Drug X for Relapsing MS
+- **Phase:** 2
+- **Status:** Recruiting
+- **Condition:** Multiple Sclerosis, Relapsing-Remitting
+- **Intervention:** Drug X (oral, 10mg daily)
+- **Sponsor:** Pharma Corp
+
+## Eligibility Criteria
+
+### Inclusion
+- Age 18-55 years
+- Diagnosed with RRMS per McDonald criteria
+- At least 1 relapse in past 12 months
+- EDSS score 0-5.5
+
+### Exclusion
+- Prior treatment with Drug Y or Drug Z
+- Active infection
+- Pregnancy or breastfeeding
+- Significant cardiac disease
+
+## Locations
+- San Francisco, CA - UCSF Medical Center
+- Boston, MA - Mass General Hospital
+- New York, NY - Mount Sinai
+
+## Contact
+- Principal Investigator: Dr. Jane Smith
+- Email: jsmith@example.com
+- Phone: (555) 123-4567
+
+## Dates
+- Start: 2024-03-01
+- Estimated Completion: 2026-06-01
+
+## Source
+- ClinicalTrials.gov: https://clinicaltrials.gov/study/NCT12345678
+- Last Updated: 2025-01-30
+```
+
+## MongoDB Schema
+
+**trials collection:**
+
+```typescript
+{
+  _id: ObjectId,
+  nctId: string,           // "NCT12345678" - unique index
+  title: string,
+  condition: string,       // normalized: "multiple_sclerosis"
+  phase: string,           // "phase1", "phase2", "phase3"
+  status: string,          // "Recruiting", "Active", etc.
+  intervention: string,
+  eligibilityCriteria: {
+    inclusion: string[],
+    exclusion: string[]
+  },
+  locations: string[],
+  contact: {
+    name: string,
+    email: string,
+    phone: string
+  },
+  dates: {
+    start: Date,
+    estimatedCompletion: Date
+  },
+  sourceUrl: string,
+  markdownContent: string,  // Full markdown for bash-tool
+  sourceHash: string,       // For deduplication
+  lastScraped: Date,
+  createdAt: Date,
+  updatedAt: Date
+}
+// Indexes: { nctId: 1 } unique, { condition: 1, phase: 1 }
+```
+
+**patients collection:**
+
+```typescript
+{
+  _id: ObjectId,
+  name: string,
+  email: string,
+  age: number,
+  condition: string,        // "multiple_sclerosis"
+  priorTreatments: string[],
+  comorbidities: string[],
+  location: string,         // "San Francisco, CA"
+  budgetConstraints: string,
+  timeCommitment: string,
+  doctorName: string,
+  doctorEmail: string,
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+**matches collection:**
+
+```typescript
+{
+  _id: ObjectId,
+  patientId: ObjectId,
+  nctId: string,
+  trialTitle: string,
+  matchScore: number,       // 0-100
+  reasoning: string,        // LLM explanation
+  status: string,           // "pending", "notified", "enrolled"
+  createdAt: Date
+}
+// Index: { patientId: 1, createdAt: -1 }
+```
+
+**crawl_index collection:** (for deduplication)
+
+```typescript
+{
+  _id: ObjectId,
+  nctId: string,            // unique index
+  sourceHash: string,
+  lastScraped: Date
+}
+```
 
 ## Implementation Steps
 
-### Phase 1: Data Ingestion Pipeline (2-3 hours)
+### Phase 1: Project Setup (30 min)
 
-**1.1 ClinicalTrials.gov API Integration**
+**1.1 Initialize Next.js Project**
 
-- Use the official API v2 (`https://clinicaltrials.gov/api/v2/studies`)
-- Query for specific conditions (start with RRMS for demo)
-- Extract: NCT ID, title, phase, status, eligibility criteria, locations
-- Store structured JSON directly in Supabase
-
-```python
-# Example API call
-GET https://clinicaltrials.gov/api/v2/studies?query.cond=multiple+sclerosis&filter.overallStatus=RECRUITING&pageSize=50
+```bash
+npx create-next-app@latest clinical-trial-matcher --typescript --tailwind --app
+cd clinical-trial-matcher
+npm install ai @ai-sdk/openai bash-tool mongodb resend zod
+npm install @mendable/firecrawl-js  # Firecrawl SDK
 ```
 
-**1.2 Firecrawl Enrichment**
-
-- Use Firecrawl's `/extract` endpoint to scrape additional details from trial pages
-- Extract contact information, detailed eligibility, and supplementary data not in API
-- Focus on: sponsor details, investigator info, site-specific requirements
-
-**1.3 Reducto for PDF Protocols (Stretch)**
-
-- Parse uploaded protocol PDFs for detailed eligibility criteria
-- Extract structured data from consent forms if available
-
-### Phase 2: Patient Management (1-2 hours)
-
-**2.1 Simple Web Form**
-
-- FastAPI endpoint to accept patient data
-- Minimal UI using HTML/Jinja2 templates (ugly is fine per judges)
-- Fields: name, email, age, condition, location, prior treatments, constraints
-
-**2.2 Supabase Storage**
-
-- Store patient profiles with doctor association
-- Enable updates/edits via simple form
-
-### Phase 3: Matching Agent (2-3 hours)
-
-**3.1 Matching Logic**
-
-- Query all recruiting trials for patient's condition
-- For each trial, send to GPT-4o with patient profile and eligibility criteria
-- Prompt structure:
-
-```
-You are a clinical trial matching assistant. Given a patient profile and trial eligibility criteria, determine if the patient is likely eligible.
-
-Patient Profile:
-- Age: {age}
-- Condition: {condition}
-- Prior Treatments: {treatments}
-- Location: {location}
-- Constraints: {constraints}
-
-Trial: {trial_title}
-Eligibility Criteria:
-{eligibility_text}
-
-Respond with:
-1. Match Score (0-100)
-2. Key matching factors (what qualifies them)
-3. Potential disqualifiers (what might exclude them)
-4. Recommendation (Highly Recommended / Consider / Not Recommended)
-```
-
-**3.2 OpenRouter Integration**
-
-- Use OpenRouter API for GPT-4o access (sponsor benefit)
-- Implement retry logic and error handling
-- Cache results to avoid redundant API calls
-
-**3.3 Ranking Algorithm**
-
-- Sort matches by score
-- Return top 3 matches per patient
-- Store in matches table with reasoning
-
-### Phase 4: Email Notifications (1 hour)
-
-**4.1 Resend Integration**
-
-- Create email template for trial match notifications
-- Include: patient name, top 3 trials, match scores, reasoning, next steps
-- Send to both patient and doctor emails
-
-**4.2 Email Content Structure**
-
-```
-Subject: New Clinical Trial Matches for {patient_name}
-
-Dear Dr. {doctor_name},
-
-We found {n} potential clinical trial matches for your patient {patient_name}:
-
-1. {Trial Title} (Match Score: 92%)
-   - Phase: III | Status: Recruiting
-   - Why it matches: {reasoning}
-   - Location: {nearest_site}
-   - Contact: {contact_info}
-
-[View Full Details] [Mark as Reviewed]
-
----
-This is an automated notification from Clinical Trial Matcher.
-```
-
-### Phase 5: Deployment (1 hour)
-
-**5.1 Railway Deployment**
-
-- Create `requirements.txt` with all dependencies
-- Create `Procfile` or use Railway's auto-detection
-- Set environment variables (API keys, Supabase URL)
-- Generate public URL
-
-**5.2 Environment Variables**
-
-```
-SUPABASE_URL=xxx
-SUPABASE_KEY=xxx
-OPENROUTER_API_KEY=xxx
-FIRECRAWL_API_KEY=xxx
-REDUCTO_API_KEY=xxx
-RESEND_API_KEY=xxx
-```
-
-**5.3 Demo Data**
-
-- Pre-populate 20-30 real trials from ClinicalTrials.gov
-- Create 3-5 sample patient profiles with varying criteria
-- Run matching to show real results
-
-## File Structure
+**1.2 Project Structure**
 
 ```
 clinical-trial-matcher/
-├── main.py                 # FastAPI app entry point
-├── requirements.txt        # Dependencies
-├── Procfile               # Railway deployment
-├── .env.example           # Environment template
 ├── app/
-│   ├── __init__.py
-│   ├── config.py          # Settings and env vars
-│   ├── database.py        # Supabase client
-│   ├── models.py          # Pydantic models
-│   ├── routers/
-│   │   ├── patients.py    # Patient CRUD endpoints
-│   │   ├── trials.py      # Trial ingestion endpoints
-│   │   └── matching.py    # Matching trigger endpoint
-│   ├── services/
-│   │   ├── clinicaltrials.py  # ClinicalTrials.gov API
-│   │   ├── firecrawl.py       # Firecrawl scraping
-│   │   ├── reducto.py         # PDF parsing
-│   │   ├── matcher.py         # GPT-4o matching logic
-│   │   └── email.py           # Resend notifications
-│   └── templates/
-│       └── patient_form.html  # Simple input form
+│   ├── api/
+│   │   ├── crawl/
+│   │   │   └── route.ts        # Crawl job endpoint
+│   │   ├── patients/
+│   │   │   └── route.ts        # Patient CRUD
+│   │   ├── match/
+│   │   │   └── route.ts        # Trigger matching
+│   │   └── chat/
+│   │       └── route.ts        # Agent streaming endpoint
+│   ├── patients/
+│   │   └── page.tsx            # Patient form UI
+│   ├── dashboard/
+│   │   └── page.tsx            # Status dashboard
+│   └── page.tsx                # Landing page
+├── lib/
+│   ├── mongodb.ts              # MongoDB client
+│   ├── clinicaltrials.ts       # ClinicalTrials.gov API
+│   ├── firecrawl.ts            # Firecrawl client
+│   ├── trial-loader.ts         # Load trials to memory FS
+│   ├── agent.ts                # Matching agent with bash-tool
+│   └── email.ts                # Resend client
+├── .env.local                  # Environment variables
+└── package.json
+```
+
+### Phase 2: Crawl Job with Deduplication (2 hours)
+
+**2.1 ClinicalTrials.gov API Integration**
+
+```typescript
+// lib/clinicaltrials.ts
+const CLINICALTRIALS_API = 'https://clinicaltrials.gov/api/v2/studies';
+
+export async function fetchTrials(condition: string, pageSize = 50) {
+  const params = new URLSearchParams({
+    'query.cond': condition,
+    'filter.overallStatus': 'RECRUITING',
+    'pageSize': pageSize.toString(),
+  });
+  
+  const response = await fetch(`${CLINICALTRIALS_API}?${params}`);
+  const data = await response.json();
+  return data.studies;
+}
+```
+
+**2.2 Crawl Job with MongoDB Deduplication**
+
+```typescript
+// app/api/crawl/route.ts
+import { NextResponse } from 'next/server';
+import { getDb } from '@/lib/mongodb';
+import { fetchTrials } from '@/lib/clinicaltrials';
+import { enrichWithFirecrawl } from '@/lib/firecrawl';
+import { createHash } from 'crypto';
+
+export async function POST(request: Request) {
+  const { condition } = await request.json();
+  const db = await getDb();
+  
+  // 1. Fetch from ClinicalTrials.gov
+  const trials = await fetchTrials(condition);
+  
+  // 2. Check existing in MongoDB
+  const existingIndex = await db.collection('crawl_index')
+    .find({})
+    .toArray();
+  const existingMap = new Map(existingIndex.map(t => [t.nctId, t.sourceHash]));
+  
+  // 3. Filter to new/updated only
+  const newTrials = [];
+  for (const trial of trials) {
+    const nctId = trial.protocolSection.identificationModule.nctId;
+    const sourceHash = createHash('md5').update(JSON.stringify(trial)).digest('hex');
+    
+    if (!existingMap.has(nctId) || existingMap.get(nctId) !== sourceHash) {
+      newTrials.push({ ...trial, nctId, sourceHash });
+    }
+  }
+  
+  // 4. Enrich new trials with Firecrawl
+  for (const trial of newTrials) {
+    const enriched = await enrichWithFirecrawl(trial.nctId);
+    Object.assign(trial, enriched);
+  }
+  
+  // 5. Generate markdown and store in MongoDB
+  for (const trial of newTrials) {
+    const markdown = generateTrialMarkdown(trial);
+    const doc = {
+      nctId: trial.nctId,
+      title: trial.protocolSection.identificationModule.briefTitle,
+      condition: normalizeCondition(condition),
+      phase: normalizePhase(trial.protocolSection.designModule?.phases),
+      status: trial.protocolSection.statusModule.overallStatus,
+      // ... other fields
+      markdownContent: markdown,
+      sourceHash: trial.sourceHash,
+      lastScraped: new Date(),
+      updatedAt: new Date(),
+    };
+    
+    await db.collection('trials').updateOne(
+      { nctId: trial.nctId },
+      { $set: doc, $setOnInsert: { createdAt: new Date() } },
+      { upsert: true }
+    );
+    
+    await db.collection('crawl_index').updateOne(
+      { nctId: trial.nctId },
+      { $set: { sourceHash: trial.sourceHash, lastScraped: new Date() } },
+      { upsert: true }
+    );
+  }
+  
+  return NextResponse.json({
+    total: trials.length,
+    new: newTrials.length,
+    skipped: trials.length - newTrials.length
+  });
+}
+```
+
+**2.3 Firecrawl Enrichment**
+
+```typescript
+// lib/firecrawl.ts
+import FirecrawlApp from '@mendable/firecrawl-js';
+
+const firecrawl = new FirecrawlApp({ apiKey: process.env.FIRECRAWL_API_KEY });
+
+export async function enrichWithFirecrawl(nctId: string) {
+  const url = `https://clinicaltrials.gov/study/${nctId}`;
+  
+  const result = await firecrawl.scrapeUrl(url, {
+    formats: ['markdown'],
+    onlyMainContent: true,
+  });
+  
+  // Extract additional contact info, site details not in API
+  return {
+    enrichedContent: result.markdown,
+    scrapedAt: new Date(),
+  };
+}
+```
+
+### Phase 3: Patient Management (1 hour)
+
+**3.1 Patient API Route**
+
+```typescript
+// app/api/patients/route.ts
+import { NextResponse } from 'next/server';
+import { getDb } from '@/lib/mongodb';
+import { ObjectId } from 'mongodb';
+
+export async function POST(request: Request) {
+  const patient = await request.json();
+  const db = await getDb();
+  
+  const result = await db.collection('patients').insertOne({
+    ...patient,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+  
+  return NextResponse.json({ id: result.insertedId });
+}
+
+export async function GET() {
+  const db = await getDb();
+  const patients = await db.collection('patients').find({}).toArray();
+  return NextResponse.json(patients);
+}
+```
+
+**3.2 Simple Patient Form (React)**
+
+```typescript
+// app/patients/page.tsx
+'use client';
+import { useState } from 'react';
+
+export default function PatientForm() {
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    age: '',
+    condition: 'multiple_sclerosis',
+    location: '',
+    priorTreatments: '',
+    comorbidities: '',
+    budgetConstraints: '',
+    timeCommitment: '',
+    doctorName: '',
+    doctorEmail: '',
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const response = await fetch('/api/patients', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...formData,
+        age: parseInt(formData.age),
+        priorTreatments: formData.priorTreatments.split(',').map(s => s.trim()),
+        comorbidities: formData.comorbidities.split(',').map(s => s.trim()),
+      }),
+    });
+    // Handle response...
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="max-w-2xl mx-auto p-4">
+      {/* Form fields - functional, not pretty */}
+    </form>
+  );
+}
+```
+
+### Phase 4: Matching Agent with bash-tool (2-3 hours)
+
+**4.1 Trial Loader - MongoDB to In-Memory Filesystem**
+
+```typescript
+// lib/trial-loader.ts
+import { getDb } from './mongodb';
+
+export async function loadTrialsToFilesystem(condition?: string) {
+  const db = await getDb();
+  
+  const query = condition ? { condition } : {};
+  const trials = await db.collection('trials').find(query).toArray();
+  
+  const files: Record<string, string> = {};
+  
+  for (const trial of trials) {
+    const path = `trials/${trial.condition}/${trial.phase}/${trial.nctId}.md`;
+    files[path] = trial.markdownContent;
+  }
+  
+  // Add an index file for quick reference
+  files['trials/index.txt'] = trials
+    .map(t => `${t.nctId}: ${t.title} (${t.condition}/${t.phase})`)
+    .join('\n');
+  
+  return files;
+}
+```
+
+**4.2 Matching Agent with Vercel AI SDK + bash-tool**
+
+```typescript
+// lib/agent.ts
+import { createOpenAI } from '@ai-sdk/openai';
+import { generateText } from 'ai';
+import { createBashTool } from 'bash-tool';
+import { loadTrialsToFilesystem } from './trial-loader';
+import { getDb } from './mongodb';
+import { ObjectId } from 'mongodb';
+
+const openrouter = createOpenAI({
+  baseURL: 'https://openrouter.ai/api/v1',
+  apiKey: process.env.OPENROUTER_API_KEY,
+});
+
+const SYSTEM_PROMPT = `You are a clinical trial matching agent. You have access to a filesystem of clinical trials organized as:
+trials/{condition}/{phase}/{nctId}.md
+
+You can use bash commands to navigate and search:
+- ls trials/ - list all conditions
+- ls trials/{condition}/ - list phases
+- ls trials/{condition}/{phase}/ - list trials
+- cat trials/{condition}/{phase}/{nctId}.md - read trial details
+- grep -r "keyword" trials/ - search for specific criteria
+- cat trials/index.txt - see all trials at a glance
+
+Your task:
+1. Given a patient profile, navigate to their condition folder
+2. Search through trials to find potential matches
+3. Read promising trial files to check eligibility criteria against patient profile
+4. Score each trial 0-100 based on how well the patient fits
+5. Return EXACTLY 3 matches in JSON format
+
+Scoring guidelines:
+- 90-100: Patient clearly meets all inclusion criteria, no exclusion criteria apply
+- 70-89: Patient likely eligible, minor uncertainties
+- 50-69: Patient may be eligible, some criteria unclear
+- Below 50: Patient likely ineligible
+
+Be thorough - use grep to filter, then cat to read full details.
+When done, output your final answer as JSON:
+{
+  "matches": [
+    { "nctId": "NCT...", "title": "...", "score": 92, "reasoning": "..." },
+    { "nctId": "NCT...", "title": "...", "score": 85, "reasoning": "..." },
+    { "nctId": "NCT...", "title": "...", "score": 78, "reasoning": "..." }
+  ]
+}`;
+
+export async function runMatchingAgent(patientId: string) {
+  const db = await getDb();
+  
+  // 1. Get patient
+  const patient = await db.collection('patients').findOne({ 
+    _id: new ObjectId(patientId) 
+  });
+  if (!patient) throw new Error('Patient not found');
+  
+  // 2. Load trials into in-memory filesystem
+  const files = await loadTrialsToFilesystem(patient.condition);
+  
+  // 3. Create bash-tool with loaded files
+  const { tools } = await createBashTool({ files });
+  
+  // 4. Build patient context
+  const patientContext = `
+Patient Profile:
+- Name: ${patient.name}
+- Age: ${patient.age}
+- Condition: ${patient.condition}
+- Location: ${patient.location}
+- Prior Treatments: ${patient.priorTreatments?.join(', ') || 'None'}
+- Comorbidities: ${patient.comorbidities?.join(', ') || 'None'}
+- Budget Constraints: ${patient.budgetConstraints || 'None specified'}
+- Time Commitment: ${patient.timeCommitment || 'Flexible'}
+
+Find the top 3 clinical trials for this patient. Use the filesystem to explore available trials.
+`;
+
+  // 5. Run agent with tool loop
+  const result = await generateText({
+    model: openrouter('openai/gpt-4o'),
+    system: SYSTEM_PROMPT,
+    prompt: patientContext,
+    tools,
+    maxSteps: 20, // Allow multiple tool calls
+  });
+  
+  // 6. Parse matches from response
+  const matches = parseMatchesFromResponse(result.text);
+  
+  // 7. Store matches in MongoDB
+  for (const match of matches) {
+    await db.collection('matches').insertOne({
+      patientId: new ObjectId(patientId),
+      nctId: match.nctId,
+      trialTitle: match.title,
+      matchScore: match.score,
+      reasoning: match.reasoning,
+      status: 'pending',
+      createdAt: new Date(),
+    });
+  }
+  
+  return { patient, matches, steps: result.steps };
+}
+
+function parseMatchesFromResponse(text: string) {
+  const jsonMatch = text.match(/\{[\s\S]*"matches"[\s\S]*\}/);
+  if (jsonMatch) {
+    return JSON.parse(jsonMatch[0]).matches;
+  }
+  return [];
+}
+```
+
+**4.3 Match API Endpoint**
+
+```typescript
+// app/api/match/route.ts
+import { NextResponse } from 'next/server';
+import { runMatchingAgent } from '@/lib/agent';
+import { sendMatchNotification } from '@/lib/email';
+
+export async function POST(request: Request) {
+  const { patientId } = await request.json();
+  
+  // Run matching agent
+  const { patient, matches, steps } = await runMatchingAgent(patientId);
+  
+  // Send email notification
+  await sendMatchNotification(patient, matches);
+  
+  return NextResponse.json({
+    patient: patient.name,
+    matches,
+    agentSteps: steps.length,
+  });
+}
+```
+
+### Phase 5: Email Notifications (1 hour)
+
+**5.1 Resend Integration**
+
+```typescript
+// lib/email.ts
+import { Resend } from 'resend';
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+export async function sendMatchNotification(patient: any, matches: any[]) {
+  const matchList = matches.map((m, i) => `
+${i + 1}. ${m.title} (Match Score: ${m.score}%)
+   - Trial ID: ${m.nctId}
+   - Why it matches: ${m.reasoning}
+   - Link: https://clinicaltrials.gov/study/${m.nctId}
+`).join('\n');
+
+  // Send to doctor
+  await resend.emails.send({
+    from: 'Clinical Trial Matcher <trials@yourdomain.com>',
+    to: patient.doctorEmail,
+    subject: `Clinical Trial Matches for ${patient.name}`,
+    text: `
+Dear Dr. ${patient.doctorName},
+
+We found ${matches.length} potential clinical trial matches for your patient ${patient.name}:
+
+${matchList}
+
+Patient Profile:
+- Age: ${patient.age}
+- Condition: ${patient.condition}
+- Location: ${patient.location}
+
+Please review these matches and discuss with your patient.
+
+---
+Clinical Trial Matcher
+    `,
+  });
+
+  // Send to patient
+  await resend.emails.send({
+    from: 'Clinical Trial Matcher <trials@yourdomain.com>',
+    to: patient.email,
+    subject: `Clinical Trial Options Found for You`,
+    text: `
+Dear ${patient.name},
+
+Great news! We found ${matches.length} clinical trials that may be a good fit for you:
+
+${matchList}
+
+Please discuss these options with your doctor, Dr. ${patient.doctorName}.
+
+---
+Clinical Trial Matcher
+    `,
+  });
+}
+```
+
+### Phase 6: Deployment (1 hour)
+
+**6.1 Environment Variables**
+
+```bash
+# .env.local
+MONGODB_URI=mongodb+srv://...
+OPENROUTER_API_KEY=sk-or-...
+FIRECRAWL_API_KEY=fc-...
+RESEND_API_KEY=re_...
+```
+
+**6.2 Vercel Deployment**
+
+1. Push to GitHub
+2. Connect repo to Vercel
+3. Add MongoDB Atlas via Vercel Marketplace (native integration)
+4. Set environment variables in Vercel dashboard
+5. Deploy
+
+**6.3 MongoDB Atlas Setup**
+
+1. Create free M0 cluster via Vercel integration
+2. Collections auto-created on first write
+3. Add indexes via MongoDB Atlas UI or script:
+
+```typescript
+// scripts/setup-indexes.ts
+const db = await getDb();
+await db.collection('trials').createIndex({ nctId: 1 }, { unique: true });
+await db.collection('trials').createIndex({ condition: 1, phase: 1 });
+await db.collection('crawl_index').createIndex({ nctId: 1 }, { unique: true });
+await db.collection('matches').createIndex({ patientId: 1, createdAt: -1 });
+```
+
+## File Structure (Final)
+
+```
+clinical-trial-matcher/
+├── app/
+│   ├── api/
+│   │   ├── crawl/route.ts          # Crawl job endpoint
+│   │   ├── patients/route.ts       # Patient CRUD
+│   │   ├── match/route.ts          # Trigger matching
+│   │   └── trials/route.ts         # List trials
+│   ├── patients/page.tsx           # Patient form
+│   ├── dashboard/page.tsx          # Status dashboard
+│   └── page.tsx                    # Landing page
+├── lib/
+│   ├── mongodb.ts                  # MongoDB client singleton
+│   ├── clinicaltrials.ts           # ClinicalTrials.gov API
+│   ├── firecrawl.ts                # Firecrawl enrichment
+│   ├── trial-loader.ts             # Load trials to memory FS
+│   ├── agent.ts                    # Matching agent
+│   └── email.ts                    # Resend notifications
+├── .env.local
+├── package.json
 └── README.md
 ```
 
 ## Key Tradeoffs (For Judges)
 
-1. **Official API vs Full Scraping**: Using ClinicalTrials.gov API v2 as primary source ensures reliable, structured data. Firecrawl supplements with enrichment data rather than being the primary source.
-2. **GPT-4o vs Fine-tuned Model**: GPT-4o via OpenRouter provides 88% accuracy out-of-box. Fine-tuning would improve accuracy but isn't feasible in one day.
-3. **Simple UI vs Polish**: Prioritizing working backend over beautiful frontend. HTML forms are functional, not pretty.
-4. **RRMS Focus vs All Conditions**: Scoping to one condition (Relapsing-Remitting Multiple Sclerosis) for demo quality. Architecture supports any condition.
-5. **Daily Batch vs Real-time**: Implementing on-demand matching for demo. Production would use scheduled jobs.
-6. **No HIPAA Compliance**: Explicitly out of scope for hackathon. Would require significant infrastructure for production.
+1. **In-Memory Filesystem via bash-tool**: Trials stored in MongoDB, loaded into virtual filesystem at runtime. This gives us the best of both worlds - persistent storage AND agent-friendly bash navigation. Tradeoff: memory usage scales with trial count, but fine for demo scale.
+2. **MongoDB over SQL**: Document model is natural for trial data (nested eligibility criteria, variable fields). **MongoDB is headliner sponsor** - targeting their prize track.
+3. **Deduplication via Hash**: We hash trial data and store in `crawl_index`. Only re-scrape when hash changes. Saves Firecrawl API calls and prevents duplicate work.
+4. **GPT-4o via OpenRouter**: 88% criterion-level accuracy. **OpenRouter is sponsor**. Could use Claude for better medical reasoning, but GPT-4o is proven for this task.
+5. **Vercel AI SDK**: Native bash-tool support, streaming, tool loops all built-in. Less code than building from scratch.
+6. **Simple UI**: Functional React forms, not beautiful. Judges said "working systems, even if they're ugly."
+7. **RRMS Focus**: Scoping to Multiple Sclerosis for demo. Architecture supports any condition.
 
 ## Demo Script
 
-1. Show live trial data ingestion from ClinicalTrials.gov
-2. Add a new patient via web form
-3. Trigger matching - show GPT-4o reasoning in real-time
-4. Receive email notification with top 3 matches
-5. Show Supabase dashboard with stored data
+1. **Show MongoDB Atlas**: Collections with real trial data
+2. **Run crawl job**: `POST /api/crawl` - show deduplication ("Found 50 trials, 3 are new")
+3. **Add patient**: Fill form with realistic MS patient profile
+4. **Trigger matching**: `POST /api/match` - watch agent steps in response:
+  - "bash: ls trials/multiple_sclerosis/"
+  - "bash: grep -r 'Age 18-55' trials/multiple_sclerosis/"
+  - "bash: cat trials/multiple_sclerosis/phase2/NCT12345678.md"
+5. **Show email**: Real email in inbox with top 3 matches
+6. **Show matches in MongoDB**: Stored with scores and reasoning
 
 ## Risk Mitigation
 
-- **API Rate Limits**: Cache trial data, don't re-fetch during demo
-- **LLM Latency**: Pre-compute some matches, show cached results if needed
-- **Email Deliverability**: Test with real emails before demo, have backup screenshots
-- **Deployment Issues**: Have local fallback ready, but prioritize live demo
+- **API Rate Limits**: Trial data cached in MongoDB, crawl job has dedup
+- **LLM Latency**: Pre-run matching before demo, show cached results if needed
+- **Email Deliverability**: Test with real emails, verify Resend domain setup
+- **MongoDB Connection**: Use connection pooling, test cold starts
 
 ## Dependencies
 
+```json
+{
+  "dependencies": {
+    "ai": "^4.0.0",
+    "@ai-sdk/openai": "^1.0.0",
+    "bash-tool": "^0.1.0",
+    "mongodb": "^6.0.0",
+    "resend": "^3.0.0",
+    "@mendable/firecrawl-js": "^1.0.0",
+    "zod": "^3.22.0",
+    "next": "^14.0.0",
+    "react": "^18.0.0"
+  }
+}
 ```
-fastapi>=0.109.0
-uvicorn>=0.27.0
-supabase>=2.0.0
-httpx>=0.26.0
-python-dotenv>=1.0.0
-jinja2>=3.1.0
-resend>=0.7.0
-pydantic>=2.0.0
-```
+
+## API Endpoints Summary
+
+
+| Endpoint             | Method | Description                       |
+| -------------------- | ------ | --------------------------------- |
+| `/api/crawl`         | POST   | Trigger crawl job for a condition |
+| `/api/patients`      | GET    | List all patients                 |
+| `/api/patients`      | POST   | Create new patient                |
+| `/api/patients/[id]` | GET    | Get patient details               |
+| `/api/match`         | POST   | Trigger matching for a patient    |
+| `/api/trials`        | GET    | List all trials from MongoDB      |
+
 
