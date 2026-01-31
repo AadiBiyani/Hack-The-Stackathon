@@ -27,12 +27,53 @@ const TopMatchesSchema = z.object({
 });
 
 function extractJsonBlock(text: string): string | null {
-  const m = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (m) return m[1].trim();
+  // Try to find a code block containing "matches" or "top_matches"
+  const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)```/g;
+  let match;
+  while ((match = codeBlockRegex.exec(text)) !== null) {
+    const content = match[1].trim();
+    if (content.includes('"matches"') || content.includes('"top_matches"')) {
+      return content;
+    }
+  }
+
+  // Try to extract a complete JSON object from the text
+  // Find the first { and match braces to find the complete object
   const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start !== -1 && end > start) return text.slice(start, end + 1);
+  if (start !== -1) {
+    let braceCount = 0;
+    for (let i = start; i < text.length; i++) {
+      if (text[i] === "{") braceCount++;
+      if (text[i] === "}") braceCount--;
+      if (braceCount === 0) {
+        return text.slice(start, i + 1);
+      }
+    }
+  }
+
   return null;
+}
+
+// Normalize the agent response to our expected format
+function normalizeMatches(raw: Record<string, unknown>): { matches: Array<Record<string, unknown>> } {
+  // Handle "top_matches" key (agent sometimes uses this)
+  const matchesArray = raw.matches || raw.top_matches;
+  
+  if (!Array.isArray(matchesArray)) {
+    throw new Error("No matches array found in response");
+  }
+
+  // Normalize each match item
+  const normalized = matchesArray.slice(0, 3).map((item: Record<string, unknown>) => ({
+    nct_id: item.nct_id || item.nctId || item.id || "",
+    trial_title: item.trial_title || item.title || item.name || "",
+    match_score: typeof item.match_score === "number" ? item.match_score : 
+                 typeof item.score === "number" ? item.score : 80,
+    reasoning: item.reasoning || item.reason || item.rationale || 
+               item.match_reason || item.description || "",
+  }));
+
+  return { matches: normalized };
 }
 
 export async function POST(request: Request) {
@@ -119,20 +160,24 @@ export async function POST(request: Request) {
   // 4. OpenAI model with AI SDK v6 ToolLoopAgent
   const model = openai(OPENAI_MODEL);
 
-  const systemPrompt = `You are a clinical trial matching agent. You have access to a read-only filesystem containing markdown files of clinical trials. Each file is at a path like trials/{condition}/{phase}/NCT12345678.md.
+  const systemPrompt = `You are a clinical trial matching agent. You have access to a read-only filesystem containing markdown files of clinical trials.
 
 Your task: Given a patient profile, use the bash tool to explore the filesystem (e.g. ls, find, cat, grep) and identify the top 3 clinical trials that best match the patient. Consider eligibility, phase, location, and relevance to their condition.
 
-At the end, respond with a single JSON block (no other text) in this exact format:
-\`\`\`json
+IMPORTANT: Your final response MUST be ONLY a JSON object in this EXACT format (no markdown, no explanation, just the JSON):
 {
   "matches": [
-    { "nct_id": "NCT...", "trial_title": "...", "match_score": 0-100, "reasoning": "..." },
-    ...
+    {"nct_id": "NCT12345678", "trial_title": "Trial Name", "match_score": 85, "reasoning": "Why this matches"},
+    {"nct_id": "NCT87654321", "trial_title": "Another Trial", "match_score": 75, "reasoning": "Why this matches"}
   ]
 }
-\`\`\`
-Include exactly 1 to 3 matches, ordered by match_score descending.`;
+
+Rules:
+- Return 1-3 matches maximum
+- nct_id must be the NCT identifier from the filename
+- match_score is 0-100
+- Order by match_score descending
+- DO NOT include any text before or after the JSON`;
 
   const userPrompt = `Patient profile:
 - Name: ${patient.name || "N/A"}
@@ -151,12 +196,14 @@ Find the top 3 matching trials and return the JSON block.`;
     const agent = new ToolLoopAgent({
       model,
       tools,
-      system: systemPrompt,
       stopWhen: stepCountIs(20),
     });
 
+    // Combine system and user prompts since ToolLoopAgent doesn't have a system parameter
+    const fullPrompt = `${systemPrompt}\n\n---\n\n${userPrompt}`;
+
     const result = await agent.generate({
-      prompt: userPrompt,
+      prompt: fullPrompt,
     });
 
     resultText = result.text || "";
@@ -179,10 +226,16 @@ Find the top 3 matching trials and return the JSON block.`;
   let parsed: z.infer<typeof TopMatchesSchema>;
   try {
     const raw = JSON.parse(jsonStr);
-    parsed = TopMatchesSchema.parse(raw);
+    const normalized = normalizeMatches(raw);
+    parsed = TopMatchesSchema.parse(normalized);
   } catch (e) {
     return NextResponse.json(
-      { error: "Invalid matches JSON", detail: String(e) },
+      { 
+        error: "Invalid matches JSON", 
+        detail: String(e),
+        extracted_json: jsonStr.slice(0, 1000),
+        raw_text_end: resultText.slice(-2000),
+      },
       { status: 500 }
     );
   }
