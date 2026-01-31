@@ -1,11 +1,14 @@
+# Force Node.js detection
+providers = ["node"]
+
 [phases.setup]
-nixPkgs = ["nodejs_18"]
+nixPkgs = ["nodejs_18", "npm"]
 
 [phases.install]
-cmds = ["npm ci || npm install"]
+cmds = ["npm install"]
 
 [phases.build]
 cmds = ["npm run build"]
 
 [start]
-cmd = "npm run start"
+cmd = "npm start"
