@@ -1,5 +1,12 @@
 node_modules
 .env
 package-lock.json
-package.json
 test-output
+.cursor/plans
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
