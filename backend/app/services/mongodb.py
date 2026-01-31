@@ -74,9 +74,26 @@ async def create_indexes() -> None:
     # Crawl index collection
     await db.crawl_index.create_index("nct_id", unique=True)
     
-    # Patients collection indexes
+    # Patients collection indexes - Core
     await db.patients.create_index("email", unique=True, sparse=True)
     await db.patients.create_index("condition")
+    await db.patients.create_index("synthea_id", unique=True, sparse=True)
+    
+    # Patients collection indexes - Extended (for efficient querying)
+    await db.patients.create_index("active_condition_codes")  # Array index for SNOMED matching
+    await db.patients.create_index("active_medication_codes")  # Array index for RxNorm matching
+    await db.patients.create_index("sex")
+    await db.patients.create_index("location.state")
+    await db.patients.create_index("primary_diagnosis.snomed_code", sparse=True)
+    await db.patients.create_index("treatments.biologic_naive", sparse=True)
+    await db.patients.create_index("data_source")
+    
+    # Compound index for common queries
+    await db.patients.create_index([
+        ("condition", 1),
+        ("location.state", 1),
+        ("treatments.biologic_naive", 1)
+    ])
     
     # Matches collection indexes
     await db.matches.create_index([("patient_id", 1), ("created_at", -1)])

@@ -160,9 +160,31 @@ export async function POST(request: Request) {
   // 4. OpenAI model with AI SDK v6 ToolLoopAgent
   const model = openai(OPENAI_MODEL);
 
-  const systemPrompt = `You are a clinical trial matching agent. You have access to a read-only filesystem containing markdown files of clinical trials.
+  const systemPrompt = `You are a clinical trial matching agent specializing in autoimmune diseases (Rheumatoid Arthritis, Lupus, etc.). You have access to a read-only filesystem containing markdown files of clinical trials.
 
-Your task: Given a patient profile, use the bash tool to explore the filesystem (e.g. ls, find, cat, grep) and identify the top 3 clinical trials that best match the patient. Consider eligibility, phase, location, and relevance to their condition.
+Your task: Given a detailed patient profile, use the bash tool to explore the filesystem (e.g. ls, find, cat, grep) and identify the top 3 clinical trials that best match the patient.
+
+## Matching Criteria (in order of importance):
+
+1. **Eligibility Criteria Match**
+   - Check disease activity scores (DAS28, CDAI) against trial requirements
+   - Verify lab values meet inclusion criteria (RF+, anti-CCP+, ESR, CRP, eGFR)
+   - Check treatment history (biologic-naive vs. biologic-experienced)
+   - Number of failed DMARDs/biologics often required
+   
+2. **Exclusion Criteria Check**
+   - Pregnancy status
+   - Active infections, malignancies
+   - Hepatitis B/C, HIV, TB history
+   - Recent live vaccines or surgeries
+
+3. **Demographics & Location**
+   - Age and sex requirements
+   - Geographic proximity to trial sites
+
+4. **Disease Severity Match**
+   - Mild/moderate/severe disease activity
+   - Active vs. stable disease
 
 IMPORTANT: Your final response MUST be ONLY a JSON object in this EXACT format (no markdown, no explanation, just the JSON):
 {
@@ -175,19 +197,88 @@ IMPORTANT: Your final response MUST be ONLY a JSON object in this EXACT format (
 Rules:
 - Return 1-3 matches maximum
 - nct_id must be the NCT identifier from the filename
-- match_score is 0-100
+- match_score is 0-100 (consider: eligibility fit, exclusion safety, location proximity)
 - Order by match_score descending
+- In reasoning, cite specific eligibility criteria that match/don't match
 - DO NOT include any text before or after the JSON`;
 
-  const userPrompt = `Patient profile:
-- Name: ${patient.name || "N/A"}
-- Age: ${patient.age ?? "N/A"}
-- Condition: ${patient.condition || "N/A"}
-- Location: ${patient.location || "N/A"}
-- Prior treatments: ${(patient.prior_treatments || []).join(", ") || "None"}
-- Comorbidities: ${(patient.comorbidities || []).join(", ") || "None"}
-- Time commitment: ${patient.time_commitment || "N/A"}
+  // Build detailed patient profile from extended schema
+  const demographics = patient.demographics || {};
+  const locationDetails = patient.location_details || {};
+  const primaryDx = patient.primary_diagnosis || {};
+  const diseaseActivity = patient.disease_activity || {};
+  const labs = patient.labs || {};
+  const vitals = patient.vitals || {};
+  const treatments = patient.treatments || {};
+  const exclusions = patient.exclusions || {};
+  
+  const userPrompt = `## Patient Profile
 
+### Demographics
+- Name: ${patient.name || "N/A"}
+- Age: ${patient.age ?? demographics.age ?? "N/A"}
+- Sex: ${patient.sex || demographics.sex || "N/A"}
+- Race: ${patient.race || "N/A"}
+- Ethnicity: ${patient.ethnicity || "N/A"}
+
+### Location
+- Location: ${patient.location || "N/A"}
+- City: ${locationDetails.city || "N/A"}
+- State: ${locationDetails.state || "N/A"}
+
+### Primary Diagnosis
+- Condition: ${patient.condition || primaryDx.condition || "N/A"}
+- SNOMED Code: ${primaryDx.snomed_code || "N/A"}
+- Diagnosis Date: ${primaryDx.diagnosis_date || "N/A"}
+- Years Since Diagnosis: ${primaryDx.years_since_diagnosis ?? "N/A"}
+
+### Disease Activity
+- DAS28 Score: ${diseaseActivity.das28 ?? "N/A"} ${diseaseActivity.das28 ? (diseaseActivity.das28 > 5.1 ? "(High)" : diseaseActivity.das28 > 3.2 ? "(Moderate)" : "(Low)") : ""}
+- CDAI Score: ${diseaseActivity.cdai ?? "N/A"}
+- SDAI Score: ${diseaseActivity.sdai ?? "N/A"}
+- Disease Severity: ${diseaseActivity.disease_severity || "N/A"}
+
+### Laboratory Values
+- RF Positive: ${labs.rf_positive !== undefined ? (labs.rf_positive ? "Yes" : "No") : "N/A"}
+- Anti-CCP Positive: ${labs.anti_ccp_positive !== undefined ? (labs.anti_ccp_positive ? "Yes" : "No") : "N/A"}
+- ESR: ${labs.esr ?? "N/A"} ${labs.esr ? "mm/hr" : ""}
+- CRP: ${labs.crp ?? "N/A"} ${labs.crp ? "mg/L" : ""}
+- eGFR: ${labs.egfr ?? "N/A"} ${labs.egfr ? "mL/min" : ""}
+- Hemoglobin: ${labs.hemoglobin ?? "N/A"} ${labs.hemoglobin ? "g/dL" : ""}
+- WBC: ${labs.wbc ?? "N/A"}
+- ALT: ${labs.alt ?? "N/A"} U/L
+- AST: ${labs.ast ?? "N/A"} U/L
+
+### Vitals
+- BMI: ${vitals.bmi ?? "N/A"}
+- Blood Pressure: ${vitals.blood_pressure_systolic && vitals.blood_pressure_diastolic ? `${vitals.blood_pressure_systolic}/${vitals.blood_pressure_diastolic} mmHg` : "N/A"}
+
+### Treatment History
+- Conventional DMARDs tried: ${treatments.conventional_dmards?.join(", ") || patient.prior_treatments?.join(", ") || "None"}
+- cDMARDs failed: ${treatments.conventional_dmards_failed ?? "N/A"}
+- Biologics tried: ${treatments.biologics?.join(", ") || "None"}
+- Biologics failed: ${treatments.biologics_failed ?? 0}
+- JAK inhibitors tried: ${treatments.jak_inhibitors?.join(", ") || "None"}
+- Biologic-naive: ${treatments.biologic_naive !== undefined ? (treatments.biologic_naive ? "Yes" : "No") : "Unknown"}
+- Current medications: ${treatments.current_medications?.map((m: {name: string; dose?: string}) => `${m.name}${m.dose ? ` (${m.dose})` : ""}`).join(", ") || "N/A"}
+
+### Comorbidities
+${(patient.comorbidities || []).length > 0 ? patient.comorbidities.join(", ") : "None reported"}
+
+### Exclusion Screening
+- Pregnancy status: ${exclusions.pregnancy_status || "unknown"}
+- Recent infections: ${exclusions.recent_infections !== undefined ? (exclusions.recent_infections ? "Yes" : "No") : "N/A"}
+- Active malignancy: ${exclusions.active_malignancy !== undefined ? (exclusions.active_malignancy ? "Yes" : "No") : "No"}
+- Hepatitis B/C: ${exclusions.hepatitis_b || exclusions.hepatitis_c ? "Yes" : "No"}
+- HIV: ${exclusions.hiv_positive ? "Yes" : "No"}
+- TB history: ${exclusions.tb_history ? "Yes" : "No"}
+- Recent live vaccine: ${exclusions.recent_live_vaccine ? "Yes (within 4-6 weeks)" : "No"}
+- Recent surgery: ${exclusions.recent_surgery ? "Yes (within 4 weeks)" : "No"}
+
+### Allergies
+${(patient.allergies || []).length > 0 ? patient.allergies.map((a: {allergen: string; severity?: string}) => `${a.allergen}${a.severity ? ` (${a.severity})` : ""}`).join(", ") : "None reported"}
+
+---
 Find the top 3 matching trials and return the JSON block.`;
 
   let resultText: string;
