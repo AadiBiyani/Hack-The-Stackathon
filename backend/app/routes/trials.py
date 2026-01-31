@@ -232,24 +232,59 @@ async def trigger_bulk_crawl(request: BulkCrawlRequest):
 
 
 @router.get("/filesystem/{condition}", response_model=FilesystemResponse)
-async def get_filesystem(condition: str):
+async def get_filesystem(
+    condition: str,
+    limit: int = Query(default=15, ge=1, le=50, description="Max trials to include")
+):
     """
-    Get all trials for a condition formatted as filesystem structure.
+    Get trials for a condition formatted as filesystem structure.
     This is what the agent will use for bash-tool navigation.
+    
+    Limits trials to prevent context overflow in the agent.
+    Includes a summary index file for quick navigation.
     """
     try:
-        trials = await get_trials_by_condition(condition, status="RECRUITING")
+        # Get all trials but limit what we send to the agent
+        trials = await get_trials_by_condition(condition, status="RECRUITING", limit=limit)
         
         # Build filesystem structure
         filesystem = {}
+        
+        # Create an index/summary file for quick reference
+        index_lines = [
+            f"# Clinical Trials for {condition.replace('_', ' ').title()}",
+            f"",
+            f"Total trials: {len(trials)}",
+            f"",
+            f"## Quick Reference",
+            f"",
+            f"| NCT ID | Title | Phase | Status | Location |",
+            f"|--------|-------|-------|--------|----------|",
+        ]
         
         for trial in trials:
             cond = trial.get("condition", "unknown")
             phase = trial.get("normalized_phase", "other")
             nct_id = trial.get("nct_id", "unknown")
+            title = trial.get("title", "Unknown")[:50]
+            status = trial.get("status", "Unknown")
+            locations = trial.get("locations", [])
+            location_str = locations[0].get("city", "N/A") if locations else "N/A"
             
+            # Add to index
+            index_lines.append(f"| {nct_id} | {title}... | {phase} | {status} | {location_str} |")
+            
+            # Add full markdown file
             path = f"trials/{cond}/{phase}/{nct_id}.md"
             filesystem[path] = trial.get("markdown_content", "")
+        
+        index_lines.append("")
+        index_lines.append("## How to Use")
+        index_lines.append("- Use `cat trials/{condition}/{phase}/{NCT_ID}.md` to read full trial details")
+        index_lines.append("- Check eligibility criteria carefully for patient matching")
+        
+        # Add index file
+        filesystem["trials/INDEX.md"] = "\n".join(index_lines)
         
         return FilesystemResponse(
             success=True,

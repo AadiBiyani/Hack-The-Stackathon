@@ -3,11 +3,11 @@ Matches API: store match results from the TypeScript gateway and send Resend ema
 """
 
 import os
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
-from app.services.mongodb import get_db, save_matches, get_patient_by_id
+from app.services.mongodb import get_db, save_matches, get_patient_by_id, get_all_matches, get_matches_by_patient
 
 router = APIRouter(prefix="/api", tags=["matches"])
 
@@ -23,6 +23,38 @@ class MatchesPayload(BaseModel):
     patient_id: str = Field(..., description="Patient ID")
     matches: List[MatchItem] = Field(..., max_length=10)
     send_email: bool = Field(default=True, description="Send Resend email to doctor/patient")
+
+
+@router.get("/matches")
+async def list_matches(
+    patient_id: Optional[str] = Query(default=None, description="Filter by patient ID"),
+    limit: int = Query(default=100, ge=1, le=500, description="Maximum results")
+):
+    """
+    Get all matches or filter by patient ID.
+    """
+    try:
+        db = get_db()
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    if patient_id:
+        matches = await get_matches_by_patient(patient_id)
+    else:
+        matches = await get_all_matches(limit=limit)
+    
+    # Convert ObjectId to string for JSON serialization
+    for match in matches:
+        if "_id" in match:
+            match["_id"] = str(match["_id"])
+        if "patient_id" in match:
+            match["patient_id"] = str(match["patient_id"])
+    
+    return {
+        "success": True,
+        "count": len(matches),
+        "matches": matches
+    }
 
 
 @router.post("/matches")

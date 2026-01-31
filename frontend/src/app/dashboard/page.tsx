@@ -126,7 +126,9 @@ export default function DashboardPage() {
       const res = await fetch(`${BACKEND_URL}/api/trials/crawl/bulk`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}), // Auto-detect conditions from patients
+        body: JSON.stringify({
+          enrich_with_firecrawl: true, // Enable Firecrawl enrichment for additional trial details
+        }),
       });
 
       if (res.ok) {

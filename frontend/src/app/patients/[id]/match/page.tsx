@@ -16,13 +16,30 @@ import {
   Loader2,
   Sparkles,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  User,
+  Mail,
+  MapPin,
+  Calendar,
+  Activity,
+  Pill,
+  Heart,
+  Clock,
+  Stethoscope
 } from "lucide-react";
 
 interface Patient {
   _id: string;
   name: string;
+  email: string;
+  age: number;
   condition: string;
+  location: string;
+  prior_treatments?: string[];
+  comorbidities?: string[];
+  time_commitment?: string;
+  doctor_name?: string;
+  doctor_email?: string;
 }
 
 interface Match {
@@ -74,7 +91,6 @@ export default function MatchPage() {
     setResult(null);
     setProgress(0);
 
-    // Simulate progress while waiting
     const progressInterval = setInterval(() => {
       setProgress((prev) => {
         if (prev >= 90) return prev;
@@ -129,7 +145,7 @@ export default function MatchPage() {
 
   if (loading) {
     return (
-      <div className="container py-8 flex items-center justify-center">
+      <div className="container py-8 flex items-center justify-center min-h-[60vh]">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
@@ -151,145 +167,264 @@ export default function MatchPage() {
   }
 
   return (
-    <div className="container max-w-4xl py-8">
+    <div className="container py-8">
       <Link
-        href={`/patients/${patientId}`}
+        href="/patients"
         className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6"
       >
         <ArrowLeft className="h-4 w-4" />
-        Back to Patient
+        Back to Patients
       </Link>
 
-      <Card className="mb-6">
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Brain className="h-6 w-6 text-primary" />
-            </div>
-            <div>
-              <CardTitle>Trial Matching</CardTitle>
-              <CardDescription>
-                Finding clinical trials for {patient?.name} ({formatCondition(patient?.condition || "")})
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {!matching && !result && (
-            <div className="text-center py-8">
-              <Sparkles className="h-12 w-12 text-primary mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Ready to Find Matches</h3>
-              <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                Our AI agent will analyze the patient profile against thousands of clinical trials
-                to find the best matches.
-              </p>
-              <Button onClick={runMatching} size="lg" className="gap-2">
-                <Brain className="h-4 w-4" />
-                Start Matching
-              </Button>
-            </div>
-          )}
-
-          {matching && (
-            <div className="py-8">
-              <div className="flex items-center justify-center gap-3 mb-6">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                <span className="text-lg font-medium">AI Agent Working...</span>
-              </div>
-              <Progress value={progress} className="mb-4" />
-              <p className="text-center text-sm text-muted-foreground">
-                Analyzing eligibility criteria and matching patient profile...
-                <br />
-                This may take 30-60 seconds.
-              </p>
-            </div>
-          )}
-
-          {error && !matching && (
-            <div className="py-8">
-              <div className="flex flex-col items-center">
-                <AlertCircle className="h-12 w-12 text-destructive mb-4" />
-                <h3 className="text-lg font-semibold mb-2">Matching Failed</h3>
-                <p className="text-muted-foreground mb-4 text-center max-w-md">{error}</p>
-                <Button onClick={runMatching} variant="outline" className="gap-2">
-                  <RefreshCw className="h-4 w-4" />
-                  Try Again
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {result && result.matches && result.matches.length > 0 && (
+      {/* Side-by-side layout */}
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Left Column - Patient Profile */}
         <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="h-5 w-5 text-green-600" />
-            <h2 className="text-xl font-semibold">
-              Found {result.matches.length} Matching Trial{result.matches.length > 1 ? "s" : ""}
-            </h2>
-          </div>
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <User className="h-5 w-5" />
+            Patient Profile
+          </h2>
 
-          {result.matches.map((match, index) => (
-            <Card key={match.nct_id} className="overflow-hidden">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge variant="outline">#{index + 1}</Badge>
-                      <Badge variant={getScoreBadge(match.match_score) as "success" | "warning" | "secondary"}>
-                        {match.match_score}% Match
-                      </Badge>
-                    </div>
-                    <CardTitle className="text-lg">
-                      {match.trial_title || match.nct_id}
-                    </CardTitle>
-                    <CardDescription className="mt-1">
-                      Trial ID: {match.nct_id}
-                    </CardDescription>
-                  </div>
-                  <a
-                    href={`https://clinicaltrials.gov/study/${match.nct_id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <Button variant="outline" size="sm" className="gap-2">
-                      View Trial
-                      <ExternalLink className="h-3 w-3" />
-                    </Button>
-                  </a>
+          {/* Patient Header */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-4">
+                <div className="h-14 w-14 rounded-full bg-primary/10 flex items-center justify-center">
+                  <User className="h-7 w-7 text-primary" />
                 </div>
-              </CardHeader>
-              {match.reasoning && (
-                <>
-                  <Separator />
-                  <CardContent className="pt-4">
-                    <h4 className="text-sm font-medium mb-2">Why This Matches</h4>
-                    <p className="text-sm text-muted-foreground">{match.reasoning}</p>
-                  </CardContent>
-                </>
-              )}
-              <div className="px-6 pb-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">Match Score:</span>
-                  <Progress value={match.match_score} className="flex-1 h-2" />
-                  <span className={`text-sm font-medium ${getScoreColor(match.match_score)}`}>
-                    {match.match_score}%
-                  </span>
+                <div>
+                  <CardTitle className="text-xl">{patient?.name}</CardTitle>
+                  <CardDescription className="flex items-center gap-2 mt-1">
+                    <Mail className="h-3 w-3" />
+                    {patient?.email}
+                  </CardDescription>
                 </div>
               </div>
-            </Card>
-          ))}
-
-          <Card className="bg-muted/50">
-            <CardContent className="py-4">
-              <p className="text-sm text-muted-foreground text-center">
-                Match results have been saved and notification emails sent to the patient and doctor.
-              </p>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <Badge className="text-sm">{formatCondition(patient?.condition || "")}</Badge>
             </CardContent>
           </Card>
+
+          {/* Basic Info */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Basic Information</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center gap-3">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm"><strong>Age:</strong> {patient?.age} years</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <MapPin className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm"><strong>Location:</strong> {patient?.location}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm"><strong>Time Commitment:</strong> {patient?.time_commitment || "Not specified"}</span>
+              </div>
+              {patient?.doctor_name && (
+                <div className="flex items-center gap-3">
+                  <Stethoscope className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm"><strong>Physician:</strong> {patient.doctor_name}</span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Prior Treatments */}
+          {patient?.prior_treatments && patient.prior_treatments.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <Pill className="h-4 w-4" />
+                  Prior Treatments
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {patient.prior_treatments.map((treatment, i) => (
+                    <Badge key={i} variant="secondary" className="text-xs">
+                      {treatment}
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Comorbidities */}
+          {patient?.comorbidities && patient.comorbidities.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <Heart className="h-4 w-4" />
+                  Comorbidities
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {patient.comorbidities.map((condition, i) => (
+                    <Badge key={i} variant="outline" className="text-xs">
+                      {condition}
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
-      )}
+
+        {/* Right Column - Matching Results */}
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Brain className="h-5 w-5" />
+            Trial Matching
+          </h2>
+
+          {/* Matching Control Card */}
+          <Card>
+            <CardContent className="pt-6">
+              {!matching && !result && (
+                <div className="text-center py-4">
+                  <Sparkles className="h-10 w-10 text-primary mx-auto mb-3" />
+                  <h3 className="font-semibold mb-2">Ready to Find Matches</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    AI will analyze this patient against clinical trials
+                  </p>
+                  <Button onClick={runMatching} className="gap-2">
+                    <Brain className="h-4 w-4" />
+                    Start Matching
+                  </Button>
+                </div>
+              )}
+
+              {matching && (
+                <div className="py-4">
+                  <div className="flex items-center justify-center gap-3 mb-4">
+                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                    <span className="font-medium">AI Agent Working...</span>
+                  </div>
+                  <Progress value={progress} className="mb-3" />
+                  <p className="text-center text-xs text-muted-foreground">
+                    Analyzing eligibility criteria... (30-60 seconds)
+                  </p>
+                </div>
+              )}
+
+              {error && !matching && (
+                <div className="py-4 text-center">
+                  <AlertCircle className="h-10 w-10 text-destructive mx-auto mb-3" />
+                  <h3 className="font-semibold mb-2">Matching Failed</h3>
+                  <p className="text-sm text-muted-foreground mb-4 max-w-sm mx-auto">{error}</p>
+                  <Button onClick={runMatching} variant="outline" className="gap-2">
+                    <RefreshCw className="h-4 w-4" />
+                    Try Again
+                  </Button>
+                </div>
+              )}
+
+              {result && result.matches && result.matches.length > 0 && (
+                <div className="flex items-center gap-2 text-green-600">
+                  <CheckCircle2 className="h-5 w-5" />
+                  <span className="font-medium">
+                    Found {result.matches.length} Matching Trial{result.matches.length > 1 ? "s" : ""}
+                  </span>
+                  <Button 
+                    onClick={runMatching} 
+                    variant="ghost" 
+                    size="sm" 
+                    className="ml-auto gap-1"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    Re-run
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Match Results */}
+          {result && result.matches && result.matches.length > 0 && (
+            <div className="space-y-3">
+              {result.matches.map((match, index) => (
+                <Card key={match.nct_id} className="overflow-hidden">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge variant="outline" className="text-xs">#{index + 1}</Badge>
+                          <Badge 
+                            variant={getScoreBadge(match.match_score) as "success" | "warning" | "secondary"}
+                            className="text-xs"
+                          >
+                            {match.match_score}%
+                          </Badge>
+                        </div>
+                        <CardTitle className="text-sm leading-tight">
+                          {match.trial_title || match.nct_id}
+                        </CardTitle>
+                        <CardDescription className="text-xs mt-1">
+                          {match.nct_id}
+                        </CardDescription>
+                      </div>
+                      <a
+                        href={`https://clinicaltrials.gov/study/${match.nct_id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Button variant="outline" size="sm" className="gap-1 h-7 text-xs">
+                          View
+                          <ExternalLink className="h-3 w-3" />
+                        </Button>
+                      </a>
+                    </div>
+                  </CardHeader>
+                  {match.reasoning && (
+                    <>
+                      <Separator />
+                      <CardContent className="pt-3 pb-3">
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          {match.reasoning}
+                        </p>
+                      </CardContent>
+                    </>
+                  )}
+                  <div className="px-6 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Progress value={match.match_score} className="flex-1 h-1.5" />
+                      <span className={`text-xs font-medium ${getScoreColor(match.match_score)}`}>
+                        {match.match_score}%
+                      </span>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+
+              <Card className="bg-muted/50">
+                <CardContent className="py-3">
+                  <p className="text-xs text-muted-foreground text-center">
+                    Results saved. Notifications sent to patient and doctor.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Empty state when no results yet and not loading */}
+          {!matching && !result && !error && (
+            <Card className="border-dashed">
+              <CardContent className="py-8 text-center">
+                <Activity className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">
+                  Click "Start Matching" to find clinical trials
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

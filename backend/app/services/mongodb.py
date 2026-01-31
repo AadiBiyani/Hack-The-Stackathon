@@ -324,3 +324,12 @@ async def get_matches_by_patient(patient_id: str) -> List[Dict]:
     ).sort("match_score", -1)
     
     return await cursor.to_list(length=100)
+
+
+async def get_all_matches(limit: int = 100) -> List[Dict]:
+    """Get all matches, sorted by most recent first."""
+    db = get_db()
+    
+    cursor = db.matches.find({}).sort("created_at", -1).limit(limit)
+    
+    return await cursor.to_list(length=limit)

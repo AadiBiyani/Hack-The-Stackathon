@@ -162,7 +162,11 @@ export async function POST(request: Request) {
 
   const systemPrompt = `You are a clinical trial matching agent specializing in autoimmune diseases (Rheumatoid Arthritis, Lupus, etc.). You have access to a read-only filesystem containing markdown files of clinical trials.
 
-Your task: Given a detailed patient profile, use the bash tool to explore the filesystem (e.g. ls, find, cat, grep) and identify the top 3 clinical trials that best match the patient.
+WORKFLOW (follow this exactly):
+1. FIRST: Run "cat trials/INDEX.md" to see a summary table of all available trials
+2. SECOND: Based on the patient profile and the INDEX, identify 3-5 promising trials
+3. THIRD: Read ONLY those specific trial files with "cat trials/{condition}/{phase}/{NCT_ID}.md"
+4. FOURTH: After reading the details, select the top 3 matches
 
 ## Matching Criteria (in order of importance):
 
@@ -186,7 +190,9 @@ Your task: Given a detailed patient profile, use the bash tool to explore the fi
    - Mild/moderate/severe disease activity
    - Active vs. stable disease
 
-IMPORTANT: Your final response MUST be ONLY a JSON object in this EXACT format (no markdown, no explanation, just the JSON):
+IMPORTANT: Do NOT try to read all files. Use the INDEX to make smart choices first.
+
+Your final response MUST be ONLY a JSON object in this EXACT format (no markdown, no explanation, just the JSON):
 {
   "matches": [
     {"nct_id": "NCT12345678", "trial_title": "Trial Name", "match_score": 85, "reasoning": "Why this matches"},
@@ -196,7 +202,7 @@ IMPORTANT: Your final response MUST be ONLY a JSON object in this EXACT format (
 
 Rules:
 - Return 1-3 matches maximum
-- nct_id must be the NCT identifier from the filename
+- nct_id must be the NCT identifier from the filename (e.g., NCT12345678)
 - match_score is 0-100 (consider: eligibility fit, exclusion safety, location proximity)
 - Order by match_score descending
 - In reasoning, cite specific eligibility criteria that match/don't match
@@ -287,7 +293,7 @@ Find the top 3 matching trials and return the JSON block.`;
     const agent = new ToolLoopAgent({
       model,
       tools,
-      stopWhen: stepCountIs(20),
+      stopWhen: stepCountIs(15), // Reduced since we're being more efficient with INDEX
     });
 
     // Combine system and user prompts since ToolLoopAgent doesn't have a system parameter

@@ -11,6 +11,36 @@ from typing import Optional, List, Dict, Any
 CLINICALTRIALS_API = "https://clinicaltrials.gov/api/v2/studies"
 
 
+def format_condition_for_api(condition: str) -> str:
+    """
+    Convert normalized condition name to API-friendly format.
+    
+    Examples:
+        alzheimers_disease -> Alzheimer's Disease
+        multiple_sclerosis -> Multiple Sclerosis
+        breast_cancer -> Breast Cancer
+    """
+    # Replace underscores with spaces
+    formatted = condition.replace("_", " ")
+    
+    # Title case
+    formatted = formatted.title()
+    
+    # Handle special cases for better API matching
+    replacements = {
+        "Alzheimers": "Alzheimer's",
+        "Parkinsons": "Parkinson's",
+        "Type 2 Diabetes": "Diabetes Mellitus, Type 2",
+        "Diabetes Type 2": "Diabetes Mellitus, Type 2",
+    }
+    
+    for old, new in replacements.items():
+        if old in formatted:
+            formatted = formatted.replace(old, new)
+    
+    return formatted
+
+
 async def fetch_trials(
     condition: str,
     status: str = "RECRUITING",
@@ -21,7 +51,7 @@ async def fetch_trials(
     Fetch trials from ClinicalTrials.gov API.
     
     Args:
-        condition: Medical condition to search for
+        condition: Medical condition to search for (can be normalized or human-readable)
         status: Trial status (default: RECRUITING)
         page_size: Number of results per page (max 1000)
         page_token: Token for pagination
@@ -29,8 +59,11 @@ async def fetch_trials(
     Returns:
         Dict with trials, nextPageToken, and totalCount
     """
+    # Convert normalized condition to API-friendly format
+    api_condition = format_condition_for_api(condition)
+    
     params = {
-        "query.cond": condition,
+        "query.cond": api_condition,
         "filter.overallStatus": status,
         "pageSize": str(page_size),
     }
@@ -38,7 +71,7 @@ async def fetch_trials(
     if page_token:
         params["pageToken"] = page_token
     
-    print(f"📡 Fetching from ClinicalTrials.gov: {condition} ({status})")
+    print(f"📡 Fetching from ClinicalTrials.gov: {api_condition} ({status})")
     
     async with httpx.AsyncClient() as client:
         response = await client.get(CLINICALTRIALS_API, params=params, timeout=30.0)
