@@ -49,10 +49,17 @@ interface Match {
   reasoning?: string;
 }
 
+interface EmailResult {
+  sent: boolean;
+  recipients?: string[];
+  error?: string;
+}
+
 interface MatchResult {
   success: boolean;
   patient_id: string;
   matches: Match[];
+  email?: EmailResult;
 }
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
@@ -404,9 +411,23 @@ export default function MatchPage() {
 
               <Card className="bg-muted/50">
                 <CardContent className="py-3">
-                  <p className="text-xs text-muted-foreground text-center">
-                    Results saved. Notifications sent to patient and doctor.
-                  </p>
+                  <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                    <CheckCircle2 className="h-3 w-3 text-green-600" />
+                    <span>Results saved</span>
+                    {result.email?.sent ? (
+                      <>
+                        <span className="text-muted-foreground/50">•</span>
+                        <Mail className="h-3 w-3 text-green-600" />
+                        <span>Email sent to {result.email.recipients?.join(", ")}</span>
+                      </>
+                    ) : result.email?.error ? (
+                      <>
+                        <span className="text-muted-foreground/50">•</span>
+                        <AlertCircle className="h-3 w-3 text-yellow-600" />
+                        <span>Email not sent: {result.email.error}</span>
+                      </>
+                    ) : null}
+                  </div>
                 </CardContent>
               </Card>
             </div>

@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     
     # Resend (for email)
     resend_api_key: str = ""
+    resend_from_email: str = "onboarding@resend.dev"
     
     # Server
     port: int = 8000
