@@ -28,7 +28,8 @@ import {
   Syringe,
   AlertTriangle,
   CheckCircle2,
-  XCircle
+  XCircle,
+  Pencil
 } from "lucide-react";
 
 interface Medication {
@@ -232,12 +233,20 @@ export default function PatientDetailPage() {
                   )}
                 </div>
               </div>
-              <Link href={`/patients/${patientId}/match`}>
-                <Button className="gap-2">
-                  Find Matches
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
+              <div className="flex gap-2">
+                <Link href={`/patients/${patientId}/edit`}>
+                  <Button variant="outline" className="gap-2">
+                    <Pencil className="h-4 w-4" />
+                    Edit
+                  </Button>
+                </Link>
+                <Link href={`/patients/${patientId}/match`}>
+                  <Button className="gap-2">
+                    Find Matches
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </div>
             </div>
           </CardHeader>
         </Card>
