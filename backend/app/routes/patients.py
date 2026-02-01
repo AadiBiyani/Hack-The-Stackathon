@@ -4,6 +4,8 @@ Patients API Routes
 REST endpoints for patient management.
 """
 
+import math
+from typing import Any
 from fastapi import APIRouter, HTTPException
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -32,6 +34,24 @@ def normalize_condition(condition: str) -> str:
     return condition.lower().replace(" ", "_")
 
 
+def sanitize_for_json(obj: Any) -> Any:
+    """
+    Recursively sanitize an object for JSON serialization.
+    Converts NaN, Infinity to None.
+    """
+    if isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_json(item) for item in obj]
+    elif isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    elif isinstance(obj, ObjectId):
+        return str(obj)
+    return obj
+
+
 @router.get("", response_model=PatientListResponse)
 async def list_patients():
     """
@@ -40,10 +60,8 @@ async def list_patients():
     try:
         patients = await get_all_patients()
         
-        # Convert ObjectId to string for JSON serialization
-        for patient in patients:
-            if "_id" in patient:
-                patient["_id"] = str(patient["_id"])
+        # Sanitize for JSON (handles NaN, ObjectId, etc.)
+        patients = [sanitize_for_json(p) for p in patients]
         
         return PatientListResponse(
             success=True,
@@ -65,9 +83,8 @@ async def get_patient(patient_id: str):
         if not patient:
             raise HTTPException(status_code=404, detail="Patient not found")
         
-        # Convert ObjectId to string
-        if "_id" in patient:
-            patient["_id"] = str(patient["_id"])
+        # Sanitize for JSON (handles NaN, ObjectId, etc.)
+        patient = sanitize_for_json(patient)
         
         return {
             "success": True,
@@ -133,8 +150,7 @@ async def update_patient_endpoint(patient_id: str, updates: PatientUpdate):
         
         # Get updated patient
         patient = await get_patient_by_id(patient_id)
-        if "_id" in patient:
-            patient["_id"] = str(patient["_id"])
+        patient = sanitize_for_json(patient)
         
         return {
             "success": True,
