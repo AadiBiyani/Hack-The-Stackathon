@@ -246,6 +246,13 @@ async def update_crawl_record(nct_id: str, source_hash: str) -> None:
     )
 
 
+async def clear_crawl_index() -> int:
+    """Clear all crawl index records. Returns count of deleted records."""
+    db = get_db()
+    result = await db.crawl_index.delete_many({})
+    return result.deleted_count
+
+
 # ============ Patient Operations ============
 
 async def save_patient(patient: Dict[str, Any]) -> Any:

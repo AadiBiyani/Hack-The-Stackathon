@@ -15,7 +15,8 @@ from ..services.mongodb import (
     get_unique_patient_conditions,
     get_trials_count,
     get_patients_count,
-    get_matches_count
+    get_matches_count,
+    clear_crawl_index
 )
 from ..services.crawler import run_crawl
 from ..models.schemas import (
@@ -51,6 +52,23 @@ async def get_stats():
                 "patients": patients_count,
                 "matches": matches_count
             }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/crawl-index")
+async def clear_crawl_index_endpoint():
+    """
+    Clear the crawl index to allow re-crawling all trials as new.
+    Use this after deleting trials from the database to reset the crawl state.
+    """
+    try:
+        deleted_count = await clear_crawl_index()
+        return {
+            "success": True,
+            "message": f"Cleared {deleted_count} crawl index records",
+            "deleted_count": deleted_count
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -138,12 +156,13 @@ async def trigger_crawl(request: CrawlRequest):
     Trigger a crawl job for a condition.
     """
     try:
-        print(f"🕷️  API: Starting crawl for {request.condition}")
+        print(f"🕷️  API: Starting crawl for {request.condition} (force_refresh={request.force_refresh})")
         
         stats = await run_crawl(
             condition=request.condition,
             max_trials=request.max_trials,
-            enrich_with_firecrawl=request.enrich_with_firecrawl
+            enrich_with_firecrawl=request.enrich_with_firecrawl,
+            force_refresh=request.force_refresh
         )
         
         # Convert datetime objects for JSON serialization
@@ -189,7 +208,7 @@ async def trigger_bulk_crawl(request: BulkCrawlRequest):
                 details=[]
             )
         
-        print(f"🕷️  API: Starting bulk crawl for {len(conditions)} conditions: {conditions}")
+        print(f"🕷️  API: Starting bulk crawl for {len(conditions)} conditions: {conditions} (force_refresh={request.force_refresh})")
         
         # Crawl each condition (sequentially to avoid rate limiting)
         details = []
@@ -205,7 +224,8 @@ async def trigger_bulk_crawl(request: BulkCrawlRequest):
                 stats = await run_crawl(
                     condition=condition,
                     max_trials=request.max_trials_per_condition,
-                    enrich_with_firecrawl=request.enrich_with_firecrawl
+                    enrich_with_firecrawl=request.enrich_with_firecrawl,
+                    force_refresh=request.force_refresh
                 )
                 
                 fetched = stats.get("total_fetched", 0)

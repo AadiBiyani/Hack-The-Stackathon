@@ -211,6 +211,7 @@ class CrawlRequest(BaseModel):
     condition: str = Field(..., description="Medical condition to crawl")
     max_trials: int = Field(default=50, ge=1, le=1000, description="Maximum trials to fetch")
     enrich_with_firecrawl: bool = Field(default=True, description="Enrich with Firecrawl scraping for additional trial details")
+    force_refresh: bool = Field(default=False, description="Force re-crawl even if trials exist in crawl index")
 
 
 class CrawlResponse(BaseModel):
@@ -242,6 +243,10 @@ class BulkCrawlRequest(BaseModel):
     enrich_with_firecrawl: bool = Field(
         default=True, 
         description="Enrich with Firecrawl scraping for additional trial details"
+    )
+    force_refresh: bool = Field(
+        default=False, 
+        description="Force re-crawl even if trials exist in crawl index"
     )
 
 
