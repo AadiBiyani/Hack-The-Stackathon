@@ -6,7 +6,7 @@
  */
 
 import { openai } from "@ai-sdk/openai";
-import { Output, ToolLoopAgent, stepCountIs } from "ai";
+import { ToolLoopAgent, stepCountIs, Output } from "ai";
 import { createBashTool } from "bash-tool";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -16,14 +16,24 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o";
 
 const MatchItemSchema = z.object({
-  nct_id: z.string(),
-  trial_title: z.string().optional(),
-  match_score: z.number().min(0).max(100),
-  reasoning: z.string().optional(),
+  nct_id: z.string().describe("The NCT identifier from the trial filename (e.g., NCT12345678)"),
+  trial_title: z.string().optional().describe("The title of the clinical trial"),
+  match_score: z.number().min(0).max(100).describe("Match score from 0-100 based on eligibility criteria match"),
+  reasoning: z.string().optional().describe("Brief explanation of why this trial matches the patient"),
 });
 
 const TopMatchesSchema = z.object({
-  matches: z.array(MatchItemSchema).min(1).max(3),
+  matches: z.array(MatchItemSchema).min(1).max(3).describe("Array of top 1-3 matching clinical trials, ordered by match_score descending"),
+});
+
+// Schema for structured output from the agent
+const FinalOutputSchema = z.object({
+  matches: z.array(z.object({
+    nct_id: z.string().describe("NCT identifier (e.g., NCT12345678)"),
+    trial_title: z.string().describe("Title of the clinical trial"),
+    match_score: z.number().min(0).max(100).describe("Match score 0-100"),
+    reasoning: z.string().describe("Why this trial matches the patient"),
+  })).min(1).max(3).describe("Top 1-3 matching trials"),
 });
 
 function extractJsonBlock(text: string): string | null {
@@ -287,23 +297,40 @@ ${(patient.allergies || []).length > 0 ? patient.allergies.map((a: {allergen: st
 ---
 Find the top 3 matching trials and return the JSON block.`;
 
-  let resultText: string;
+  let parsed: z.infer<typeof TopMatchesSchema>;
   try {
-    // Use ToolLoopAgent from AI SDK v6 as shown in bash-tool docs
+    // Use ToolLoopAgent from AI SDK v6 with structured output
     const agent = new ToolLoopAgent({
       model,
       tools,
-      stopWhen: stepCountIs(15), // Reduced since we're being more efficient with INDEX
+      stopWhen: stepCountIs(15),
+      output: Output.object({ schema: FinalOutputSchema }),
     });
 
-    // Combine system and user prompts since ToolLoopAgent doesn't have a system parameter
+    // Combine system and user prompts
     const fullPrompt = `${systemPrompt}\n\n---\n\n${userPrompt}`;
 
     const result = await agent.generate({
       prompt: fullPrompt,
     });
 
-    resultText = result.text || "";
+    // With structured output, result.output should be the parsed object
+    if (result.output) {
+      parsed = { matches: result.output.matches };
+    } else {
+      // Fallback to text parsing if structured output didn't work
+      const resultText = result.text || "";
+      const jsonStr = extractJsonBlock(resultText);
+      if (!jsonStr) {
+        return NextResponse.json(
+          { error: "Agent did not return valid JSON block", raw: resultText.slice(0, 500) },
+          { status: 500 }
+        );
+      }
+      const raw = JSON.parse(jsonStr);
+      const normalized = normalizeMatches(raw);
+      parsed = TopMatchesSchema.parse(normalized);
+    }
   } catch (e) {
     const err = e instanceof Error ? e.message : String(e);
     return NextResponse.json(
@@ -312,30 +339,6 @@ Find the top 3 matching trials and return the JSON block.`;
     );
   }
 
-  const jsonStr = extractJsonBlock(resultText);
-  if (!jsonStr) {
-    return NextResponse.json(
-      { error: "Agent did not return valid JSON block", raw: resultText.slice(0, 500) },
-      { status: 500 }
-    );
-  }
-
-  let parsed: z.infer<typeof TopMatchesSchema>;
-  try {
-    const raw = JSON.parse(jsonStr);
-    const normalized = normalizeMatches(raw);
-    parsed = TopMatchesSchema.parse(normalized);
-  } catch (e) {
-    return NextResponse.json(
-      { 
-        error: "Invalid matches JSON", 
-        detail: String(e),
-        extracted_json: jsonStr.slice(0, 1000),
-        raw_text_end: resultText.slice(-2000),
-      },
-      { status: 500 }
-    );
-  }
 
   // 5. Post matches to Python backend
   const matchesPayload = {
