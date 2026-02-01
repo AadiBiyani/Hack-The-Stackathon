@@ -54,6 +54,12 @@ interface Stats {
   avgScore: number;
 }
 
+interface DbStats {
+  trials: number;
+  patients: number;
+  matches: number;
+}
+
 interface BulkCrawlResult {
   success: boolean;
   conditions_crawled: string[];
@@ -84,6 +90,7 @@ export default function DashboardPage() {
   const [bulkCrawling, setBulkCrawling] = useState(false);
   const [crawlResult, setCrawlResult] = useState<{ total: number; new: number } | null>(null);
   const [bulkCrawlResult, setBulkCrawlResult] = useState<BulkCrawlResult | null>(null);
+  const [dbStats, setDbStats] = useState<DbStats | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -92,10 +99,11 @@ export default function DashboardPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [patientsRes, trialsRes, matchesRes] = await Promise.all([
+      const [patientsRes, trialsRes, matchesRes, statsRes] = await Promise.all([
         fetch(`${BACKEND_URL}/api/patients`),
         fetch(`${BACKEND_URL}/api/trials`),
         fetch(`${BACKEND_URL}/api/matches`).catch(() => null),
+        fetch(`${BACKEND_URL}/api/trials/stats`).catch(() => null),
       ]);
 
       if (patientsRes.ok) {
@@ -111,6 +119,12 @@ export default function DashboardPage() {
       if (matchesRes?.ok) {
         const data = await matchesRes.json();
         setMatches(data.matches || []);
+      }
+
+      // Use stats endpoint for accurate counts
+      if (statsRes?.ok) {
+        const data = await statsRes.json();
+        setDbStats(data.stats || null);
       }
     } catch (err) {
       console.error("Failed to fetch data:", err);
@@ -175,9 +189,10 @@ export default function DashboardPage() {
   };
 
   const stats: Stats = {
-    patients: patients.length,
-    trials: trials.length,
-    matches: matches.length,
+    // Use dbStats for accurate counts (from count_documents), fallback to array length
+    patients: dbStats?.patients ?? patients.length,
+    trials: dbStats?.trials ?? trials.length,
+    matches: dbStats?.matches ?? matches.length,
     avgScore: matches.length > 0
       ? Math.round(matches.reduce((acc, m) => acc + m.match_score, 0) / matches.length)
       : 0,

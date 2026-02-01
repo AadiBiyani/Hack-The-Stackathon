@@ -196,6 +196,24 @@ async def get_all_trials(limit: int = 1000) -> List[Dict]:
     return await cursor.to_list(length=limit)
 
 
+async def get_trials_count() -> int:
+    """Get total count of trials in database."""
+    db = get_db()
+    return await db.trials.count_documents({})
+
+
+async def get_patients_count() -> int:
+    """Get total count of patients in database."""
+    db = get_db()
+    return await db.patients.count_documents({})
+
+
+async def get_matches_count() -> int:
+    """Get total count of matches in database."""
+    db = get_db()
+    return await db.matches.count_documents({})
+
+
 # ============ Crawl Index Operations ============
 
 async def get_crawl_record(nct_id: str) -> Optional[Dict]:

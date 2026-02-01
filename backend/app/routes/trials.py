@@ -12,7 +12,10 @@ from ..services.mongodb import (
     get_all_trials,
     get_trial_by_nct_id,
     get_trials_by_condition,
-    get_unique_patient_conditions
+    get_unique_patient_conditions,
+    get_trials_count,
+    get_patients_count,
+    get_matches_count
 )
 from ..services.crawler import run_crawl
 from ..models.schemas import (
@@ -27,6 +30,30 @@ from ..models.schemas import (
 )
 
 router = APIRouter(prefix="/api/trials", tags=["trials"])
+
+
+@router.get("/stats")
+async def get_stats():
+    """
+    Get database statistics (counts) without fetching all documents.
+    """
+    try:
+        trials_count, patients_count, matches_count = await asyncio.gather(
+            get_trials_count(),
+            get_patients_count(),
+            get_matches_count()
+        )
+        
+        return {
+            "success": True,
+            "stats": {
+                "trials": trials_count,
+                "patients": patients_count,
+                "matches": matches_count
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("", response_model=TrialListResponse)
