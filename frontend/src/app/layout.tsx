@@ -6,7 +6,7 @@ import { Navbar } from "@/components/navbar";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "TrialMatch - Clinical Trial Matching",
+  title: "MatchPoint - Clinical Trial Matching",
   description: "AI-powered clinical trial matching for patients and doctors",
 };
 

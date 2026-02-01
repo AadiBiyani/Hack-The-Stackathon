@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { 
   ArrowRight, 
   Brain, 
@@ -9,7 +8,6 @@ import {
   Mail, 
   Search, 
   Shield, 
-  Sparkles,
   Users,
   FileText,
   Zap
@@ -48,13 +46,6 @@ const features = [
   },
 ];
 
-const stats = [
-  { value: "50K+", label: "Active Trials" },
-  { value: "88%", label: "Match Accuracy" },
-  { value: "<30s", label: "Match Time" },
-  { value: "24/7", label: "Availability" },
-];
-
 export default function Home() {
   return (
     <div className="flex flex-col">
@@ -63,10 +54,6 @@ export default function Home() {
         <div className="hero-gradient absolute inset-0" />
         <div className="container relative py-24 md:py-32 lg:py-40">
           <div className="flex flex-col items-center text-center space-y-8">
-            <Badge variant="secondary" className="px-4 py-1">
-              <Sparkles className="mr-2 h-3 w-3" />
-              Powered by Vercel AI SDK
-            </Badge>
             <h1 className="text-4xl font-bold tracking-tighter sm:text-5xl md:text-6xl lg:text-7xl max-w-3xl">
               Find the Right{" "}
               <span className="text-primary">Clinical Trial</span>{" "}
@@ -89,24 +76,6 @@ export default function Home() {
                 </Button>
               </Link>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Stats Section */}
-      <section className="border-y bg-muted/50">
-        <div className="container py-12">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            {stats.map((stat) => (
-              <div key={stat.label} className="text-center">
-                <div className="text-3xl md:text-4xl font-bold text-primary">
-                  {stat.value}
-                </div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  {stat.label}
-                </div>
-              </div>
-            ))}
           </div>
         </div>
       </section>

@@ -1,5 +1,5 @@
 """
-Clinical Trial Matcher - FastAPI Backend
+MatchPoint - FastAPI Backend
 
 Main application entry point.
 """
@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
     """
     settings = get_settings()
     
-    print("\n🏥 Clinical Trial Matcher Backend")
+    print("\n🏥 MatchPoint Backend")
     print("═" * 50)
     
     # Startup
@@ -54,7 +54,7 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app
 app = FastAPI(
-    title="Clinical Trial Matcher API",
+    title="MatchPoint API",
     description="Backend API for matching patients with clinical trials",
     version="1.0.0",
     lifespan=lifespan
@@ -79,7 +79,7 @@ app.include_router(matches.router)
 async def root():
     """Root endpoint with API info."""
     return {
-        "name": "Clinical Trial Matcher API",
+        "name": "MatchPoint API",
         "version": "1.0.0",
         "docs": "/docs",
         "health": "/health"
@@ -93,7 +93,7 @@ async def health_check():
     return {
         "status": "ok",
         "timestamp": datetime.utcnow().isoformat(),
-        "service": "clinical-trial-matcher-backend"
+        "service": "matchpoint-backend"
     }
 
 
@@ -101,7 +101,7 @@ async def health_check():
 async def api_info():
     """API documentation endpoint."""
     return {
-        "name": "Clinical Trial Matcher API",
+        "name": "MatchPoint API",
         "version": "1.0.0",
         "endpoints": {
             "trials": {

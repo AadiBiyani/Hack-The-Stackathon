@@ -1,5 +1,5 @@
 ---
-name: Clinical Trial Matcher MVP
+name: MatchPoint MVP
 overview: Build a clinical trial matching system using Vercel AI SDK with bash-tool for filesystem navigation, MongoDB Atlas for trial/patient storage, Firecrawl + ClinicalTrials.gov API for data ingestion, GPT-4o via OpenRouter for matching, and Resend for notifications - deployed on Vercel.
 todos:
   - id: setup-project
@@ -32,7 +32,7 @@ todos:
 isProject: false
 ---
 
-# Clinical Trial Matcher - Hackathon Implementation Plan
+# MatchPoint - Hackathon Implementation Plan
 
 ## Architecture Overview
 
@@ -694,7 +694,7 @@ ${i + 1}. ${m.title} (Match Score: ${m.score}%)
 
   // Send to doctor
   await resend.emails.send({
-    from: 'Clinical Trial Matcher <trials@yourdomain.com>',
+    from: 'MatchPoint <trials@yourdomain.com>',
     to: patient.doctorEmail,
     subject: `Clinical Trial Matches for ${patient.name}`,
     text: `
@@ -712,13 +712,13 @@ Patient Profile:
 Please review these matches and discuss with your patient.
 
 ---
-Clinical Trial Matcher
+MatchPoint
     `,
   });
 
   // Send to patient
   await resend.emails.send({
-    from: 'Clinical Trial Matcher <trials@yourdomain.com>',
+    from: 'MatchPoint <trials@yourdomain.com>',
     to: patient.email,
     subject: `Clinical Trial Options Found for You`,
     text: `
@@ -731,7 +731,7 @@ ${matchList}
 Please discuss these options with your doctor, Dr. ${patient.doctorName}.
 
 ---
-Clinical Trial Matcher
+MatchPoint
     `,
   });
 }

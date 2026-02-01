@@ -5,7 +5,7 @@
 BASE_URL="${BASE_URL:-http://localhost:8000}"
 
 echo "════════════════════════════════════════════"
-echo "  Testing Clinical Trial Matcher API"
+echo "  Testing MatchPoint API"
 echo "  Base URL: $BASE_URL"
 echo "════════════════════════════════════════════"
 echo ""

@@ -82,7 +82,7 @@ def build_email_html(patient: Dict[str, Any], matches: List[Dict[str, Any]]) -> 
         
         <!-- Header -->
         <div style="text-align: center; padding: 24px 0; border-bottom: 1px solid #e2e8f0;">
-            <h1 style="margin: 0; font-size: 24px; color: #0f172a;">🏥 Clinical Trial Matches Found</h1>
+            <h1 style="margin: 0; font-size: 24px; color: #0f172a;">🏥 MatchPoint - Clinical Trial Matches Found</h1>
         </div>
         
         <!-- Patient Info -->
@@ -101,7 +101,7 @@ def build_email_html(patient: Dict[str, Any], matches: List[Dict[str, Any]]) -> 
         <!-- Footer -->
         <div style="padding: 20px 0; border-top: 1px solid #e2e8f0; text-align: center;">
             <p style="margin: 0 0 8px 0; font-size: 13px; color: #64748b;">
-                This is an automated notification from the Clinical Trial Matcher.
+                This is an automated notification from MatchPoint.
             </p>
             <p style="margin: 0; font-size: 13px; color: #94a3b8;">
                 Please consult with your healthcare provider before enrolling in any clinical trial.
@@ -122,7 +122,7 @@ def build_plain_text(patient: Dict[str, Any], matches: List[Dict[str, Any]]) -> 
     condition = format_condition(patient.get("condition", "Unknown"))
     
     lines = [
-        "CLINICAL TRIAL MATCHES FOUND",
+        "MATCHPOINT - Clinical Trial Matches Found",
         "=" * 40,
         "",
         f"Patient: {patient_name}",
@@ -148,7 +148,7 @@ def build_plain_text(patient: Dict[str, Any], matches: List[Dict[str, Any]]) -> 
     lines.extend([
         "",
         "-" * 40,
-        "This is an automated notification from the Clinical Trial Matcher.",
+        "This is an automated notification from MatchPoint.",
         "Please consult with your healthcare provider before enrolling.",
     ])
     
@@ -214,12 +214,12 @@ async def send_match_notification(
     try:
         print(f"📧 Attempting to send email to: {to_emails}")
         print(f"   From: {from_email}")
-        print(f"   Subject: Clinical Trial Matches for {patient_name} ({condition})")
+        print(f"   Subject: MatchPoint - Clinical Trial Matches for {patient_name} ({condition})")
         
         response = resend.Emails.send({
             "from": from_email,
             "to": to_emails,
-            "subject": f"Clinical Trial Matches for {patient_name} ({condition})",
+            "subject": f"MatchPoint: Clinical Trial Matches for {patient_name} ({condition})",
             "html": html_content,
             "text": text_content,
         })

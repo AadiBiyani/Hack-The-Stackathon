@@ -1,4 +1,4 @@
-# Clinical Trial Matcher Gateway (Vercel AI SDK)
+# MatchPoint Gateway (Vercel AI SDK)
 
 TypeScript/Next.js gateway that runs the matching agent using the Vercel AI SDK (bash-tool + OpenAI). It calls the Python FastAPI backend for patient/trials data and posts match results back.
 

@@ -1,5 +1,5 @@
 {
-  "name": "clinical-trial-matcher-gateway",
+  "name": "matchpoint-gateway",
   "version": "0.1.0",
   "private": true,
   "scripts": {
